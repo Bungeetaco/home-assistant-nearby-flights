@@ -266,8 +266,22 @@ class FlightRadar24Sensor(CoordinatorEntity[FlightRadar24Coordinator], SensorEnt
 
 class FlightRadar24RestoreSensor(FlightRadar24Sensor, RestoreSensor):
 
-    # WE MUST RECORD THESE SPECIFIC SENSORS TO RESTORE THEIR FLIGHT DATA ON REBOOT
-    _unrecorded_attributes = frozenset()
+    # "flights" is excluded from recorder history here for the same reason the plain
+    # FlightRadar24Sensor already excludes it (large payload, not meaningful in a
+    # history graph) -- restoring on reboot does NOT depend on this. RestoreEntity's
+    # async_get_last_state() reads from homeassistant.helpers.restore_state's own
+    # independent snapshot (.storage/core.restore_state, periodically dumped straight
+    # from the live state machine), never from the recorder database, so it's
+    # completely decoupled from _unrecorded_attributes / the recorder's
+    # MAX_STATE_ATTRS_BYTES cutoff -- that setting only governs the SQL
+    # history/logbook tables. The previous "WE MUST RECORD THESE ... TO RESTORE"
+    # rationale here was based on that mistaken premise, confirmed by reading
+    # restore_state.py directly. In practice the old setting was buying nothing and
+    # just making the recorder repeatedly try (and, once the flights list grew past
+    # 16KB, silently fail) to persist a blob nothing actually restores from -- see the
+    # "State attributes ... exceed maximum size" warning this was producing every
+    # single update cycle once OpenSky/adsbdb started returning real flight lists.
+    _unrecorded_attributes = frozenset({"flights"})
 
     # Per-key restore handlers -- RESTORE_SENSOR_TYPES now backs more than one sensor
     # (additional_tracked, in_area) and each restores into a different FlightProcessor
