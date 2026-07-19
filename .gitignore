@@ -1,5 +1,2 @@
-.idea
-venv
-.venv
-test.py
-example.json
+__pycache__/
+*.pyc
