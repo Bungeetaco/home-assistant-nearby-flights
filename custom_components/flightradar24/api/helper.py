@@ -64,6 +64,30 @@ def to_float(element: Any) -> None | float:
         return None
 
 
+PHASE_VERTICAL_SPEED_THRESHOLD_FPM = 300.0
+
+
+def flight_phase(on_ground: bool | None, vertical_speed_fpm: float | None) -> str | None:
+    """Coarse phase-of-flight label from data every backend provides
+    (on_ground + vertical rate), rather than the schedule/estimated times
+    only FlightRadar24 supplied - adsbdb has no live timing data, so the
+    OpenSky path can never populate time_scheduled_departure/
+    time_estimated_arrival/etc. the way the ticker card's dep/arr display
+    used to expect. +-300fpm is comfortably above the noise floor of a
+    level cruise (which drifts a little from barometric/wind effects)
+    without being so high it misses a real gentle climb or descent.
+    """
+    if on_ground:
+        return "On Ground"
+    if vertical_speed_fpm is None:
+        return None
+    if vertical_speed_fpm >= PHASE_VERTICAL_SPEED_THRESHOLD_FPM:
+        return "Departing"
+    if vertical_speed_fpm <= -PHASE_VERTICAL_SPEED_THRESHOLD_FPM:
+        return "Landing"
+    return "Cruising"
+
+
 def get_value(dictionary: dict, keys: list) -> Any | None:
     nested_dict = dictionary
 

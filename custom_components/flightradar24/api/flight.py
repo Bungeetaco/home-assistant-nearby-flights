@@ -4,7 +4,9 @@ import time
 from typing import Any
 from enum import Enum
 from FlightRadar24 import FlightRadar24API, Flight, Entity
-from .helper import to_int, get_value, haversine_km, meters_to_feet, mps_to_knots, mps_to_fpm
+from .helper import (
+    to_int, get_value, haversine_km, meters_to_feet, mps_to_knots, mps_to_fpm, flight_phase,
+)
 from .event import EventManager
 from .opensky import OpenSkyClient
 from .adsbdb import AdsbdbClient
@@ -430,6 +432,13 @@ class FlightProcessor:
                 previous_closest_distance if previous_closest_distance is not None else new_distance,
             ),
             'on_ground': state["on_ground"],
+            # adsbdb has no live timing data (only static route info), so the
+            # time_* fields above are always None for OpenSky-sourced flights
+            # and the ticker's old dep/arr-based "flown"/"Landing" text never
+            # renders. Derive a coarse phase from data OpenSky does give us
+            # (on_ground + vertical rate) so the ticker still conveys
+            # takeoff/landing instead of going silent for every flight.
+            'status': flight_phase(state["on_ground"], mps_to_fpm(state["vertical_rate_mps"])),
         }
         flight['aircraft_category'] = "Helicopter" if is_helicopter(flight) else "Airplane"
         self._takeoff_and_landing(flight, last_position, state["on_ground"], FlightType.IN_AREA)
@@ -720,6 +729,7 @@ class FlightProcessor:
                 previous_closest_distance if previous_closest_distance is not None else new_distance,
             )
             flight['on_ground'] = obj.on_ground
+            flight['status'] = flight_phase(obj.on_ground, flight['vertical_speed'])
             flight['aircraft_category'] = "Helicopter" if is_helicopter(flight) else "Airplane"
             self._takeoff_and_landing(flight, last_position, obj.on_ground, sensor_type)
 
