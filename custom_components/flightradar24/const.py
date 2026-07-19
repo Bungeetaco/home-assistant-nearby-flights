@@ -35,3 +35,16 @@ EVENT_TRACKED_LEFT_GATE = f"{DOMAIN}_tracked_left_gate"
 
 MIN_ALTITUDE = -1
 MAX_ALTITUDE = 100000
+
+# FlightRadar24's area/"zones" feed is sometimes soft-blocked by Cloudflare
+# (returns a valid, empty HTTP response instead of an error, rather than an
+# outright failure). FlightProcessor.area_stale (api/flight.py) flags this by
+# serving cached data instead of erroring out. If that condition persists for
+# longer than this many seconds, we surface a HA Repair (see coordinator.py)
+# so the block is visible somewhere other than a small dashboard indicator.
+# Kept as its own constant so the threshold is easy to find and retune later.
+AREA_STALE_ISSUE_THRESHOLD_S = 20 * 60
+
+# translation_key for the above Repair issue; must match the "issues" key
+# in strings.json / translations/en.json.
+ISSUE_AREA_STALE = "area_stale"

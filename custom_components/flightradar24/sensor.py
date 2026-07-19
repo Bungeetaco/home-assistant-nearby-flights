@@ -31,14 +31,6 @@ class FlightRadar24SensorEntityDescription(SensorEntityDescription, FlightRadar2
 
 SENSOR_TYPES: tuple[FlightRadar24SensorEntityDescription, ...] = (
     FlightRadar24SensorEntityDescription(
-        key="in_area",
-        translation_key="in_area",
-        icon="mdi:airplane-marker",
-        state_class=SensorStateClass.TOTAL,
-        value=lambda coord: len(coord.flight.in_area_list),
-        attributes=lambda coord: {'flights': coord.flight.in_area_list},
-    ),
-    FlightRadar24SensorEntityDescription(
         key="entered",
         translation_key="entered",
         icon="mdi:airplane-check",
@@ -60,7 +52,10 @@ SENSOR_TYPES: tuple[FlightRadar24SensorEntityDescription, ...] = (
         icon="mdi:airplane-search",
         state_class=SensorStateClass.TOTAL,
         value=lambda coord: len(coord.flight.most_tracked_list) if coord.flight.most_tracked_list else None,
-        attributes=lambda coord: {'flights': coord.flight.most_tracked_list if coord.flight.most_tracked_list else {}},
+        attributes=lambda coord: {
+            'flights': coord.flight.most_tracked_list if coord.flight.most_tracked_list else {},
+            'stale': coord.flight.most_tracked_stale,
+        },
     ),
     FlightRadar24SensorEntityDescription(
         key="airport_arrivals_on_time",
@@ -109,7 +104,10 @@ SENSOR_TYPES: tuple[FlightRadar24SensorEntityDescription, ...] = (
         icon="mdi:airplane-landing",
         state_class=SensorStateClass.TOTAL,
         value=lambda coord: len(coord.airport.arrivals) if coord.airport.arrivals is not None else None,
-        attributes=lambda coord: {'flights': coord.airport.arrivals} if coord.airport.arrivals is not None else None,
+        attributes=lambda coord: (
+            {'flights': coord.airport.arrivals, 'stale': coord.airport.stale}
+            if coord.airport.arrivals is not None else None
+        ),
     ),
     FlightRadar24SensorEntityDescription(
         key="airport_departures_on_time",
@@ -163,7 +161,7 @@ SENSOR_TYPES: tuple[FlightRadar24SensorEntityDescription, ...] = (
             else None
         ),
         attributes=lambda coord: (
-            {"flights": coord.airport.departures}
+            {"flights": coord.airport.departures, "stale": coord.airport.stale}
             if coord.airport.departures is not None
             else None
         ),
@@ -178,6 +176,30 @@ RESTORE_SENSOR_TYPES: tuple[FlightRadar24SensorEntityDescription, ...] = (
         state_class=SensorStateClass.TOTAL,
         value=lambda coord: len(coord.flight.tracked_list),
         attributes=lambda coord: {"flights": coord.flight.tracked_list},
+    ),
+    # MOVED HERE FROM SENSOR_TYPES (was a plain, non-restoring FlightRadar24Sensor) --
+    # confirmed by reading async_setup_entry() below that unique_id is derived purely
+    # from description.key (f"{entry_id}_{DOMAIN}_{description.key}"), and the
+    # migration loop iterates SENSOR_TYPES + RESTORE_SENSOR_TYPES together, so moving
+    # this tuple doesn't touch entity identity or the migration path at all -- only
+    # which base class (and therefore restore behavior) backs it.
+    #
+    # Reason for the move: on a fresh HA restart, FlightProcessor._in_area starts empty
+    # and _last_nonempty_monotonic starts None, so the AREA_STALE_GRACE_S caching logic
+    # in update_flights_in_area() has NOTHING to protect for the first cycle(s) --
+    # confirmed live, sensor.flightradar24_current_in_area came back empty (stale=false)
+    # and stayed that way for several minutes post-restart even with a real flight
+    # independently confirmed present, because a soft-blocked first poll had no cached
+    # data to fall back to. Restoring the last known flight list (see
+    # FlightRadar24RestoreSensor.async_added_to_hass() below) closes that gap the same
+    # way additional_tracked's restore already does for tracked flights.
+    FlightRadar24SensorEntityDescription(
+        key="in_area",
+        translation_key="in_area",
+        icon="mdi:airplane-marker",
+        state_class=SensorStateClass.TOTAL,
+        value=lambda coord: len(coord.flight.in_area_list),
+        attributes=lambda coord: {'flights': coord.flight.in_area_list, 'stale': coord.flight.area_stale},
     ),
 )
 
@@ -244,16 +266,46 @@ class FlightRadar24Sensor(CoordinatorEntity[FlightRadar24Coordinator], SensorEnt
 
 class FlightRadar24RestoreSensor(FlightRadar24Sensor, RestoreSensor):
 
-    # WE MUST RECORD THIS SPECIFIC SENSOR TO RESTORE TRACKED FLIGHTS ON REBOOT
+    # WE MUST RECORD THESE SPECIFIC SENSORS TO RESTORE THEIR FLIGHT DATA ON REBOOT
     _unrecorded_attributes = frozenset()
+
+    # Per-key restore handlers -- RESTORE_SENSOR_TYPES now backs more than one sensor
+    # (additional_tracked, in_area) and each restores into a different FlightProcessor
+    # slot via a different setter, so a single hardcoded set_tracked(...) call (the
+    # original shape, when this class only backed additional_tracked) no longer fits.
+    # Dispatching on entity_description.key keeps each restore call a plain one-liner
+    # and makes it obvious where to add the next one, rather than branching inline in
+    # async_added_to_hass() itself.
+    def _restore_additional_tracked(self, flights: list[dict[str, Any]]) -> None:
+        tracked = {}
+        for flight in flights:
+            tracked[flight.get('id') or flight.get('flight_number') or flight.get('callsign')] = flight
+        self.coordinator.flight.set_tracked(tracked)
+
+    def _restore_in_area(self, flights: list[dict[str, Any]]) -> None:
+        # Same keying convention as _restore_additional_tracked above. set_in_area()
+        # (see flight.py) also seeds _last_nonempty_monotonic to "now" and clears
+        # _area_stale, so the just-restored data gets a full AREA_STALE_GRACE_S grace
+        # window starting at restart, instead of zero protection against the very
+        # first post-restart poll if it happens to be soft-blocked.
+        in_area = {}
+        for flight in flights:
+            in_area[flight.get('id') or flight.get('flight_number') or flight.get('callsign')] = flight
+        self.coordinator.flight.set_in_area(in_area)
+
+    _RESTORE_HANDLERS = {
+        "additional_tracked": _restore_additional_tracked,
+        "in_area": _restore_in_area,
+    }
 
     async def async_added_to_hass(self):
         """Restore state on startup."""
         await super().async_added_to_hass()
         last_state = await self.async_get_last_state()
 
-        if last_state:
-            tracked = {}
-            for flight in last_state.attributes.get('flights', {}):
-                tracked[flight.get('id') or flight.get('flight_number') or flight.get('callsign')] = flight
-            self.coordinator.flight.set_tracked(tracked)
+        if not last_state:
+            return
+
+        handler = self._RESTORE_HANDLERS.get(self.entity_description.key)
+        if handler is not None:
+            handler(self, last_state.attributes.get('flights', {}))

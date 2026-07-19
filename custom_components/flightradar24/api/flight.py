@@ -1,9 +1,55 @@
+import logging
 import re
+import time
 from typing import Any
 from enum import Enum
 from FlightRadar24 import FlightRadar24API, Flight, Entity
 from .helper import to_int, get_value
 from .event import EventManager
+
+_LOGGER = logging.getLogger(__name__)
+
+# FlightRadar24's per-flight detail-lookup endpoint (used below for every flight not
+# already cached from a previous successful cycle) enforces a much stricter per-IP
+# burst limit than the area/"zones" listing call -- confirmed by direct testing that a
+# tight loop of ~10 consecutive get_flight_details() calls with no delay reliably draws
+# an HTTP 429 on the 11th, and every call in that same burst after that. Since
+# update_flights_in_area() has no per-flight error handling, a single 429 partway
+# through aborts the WHOLE method before self._in_area is ever assigned -- meaning a
+# large area (lots of flights, all uncached after any coordinator reload/reset) reliably
+# nukes every single update cycle indefinitely, never producing any flights at all. A
+# small delay between real (non-cached) detail fetches keeps this under whatever the
+# actual limit is without losing any data -- it only makes a cold cycle take longer,
+# which is fine since this runs in HA's executor thread pool, off the event loop.
+DETAIL_FETCH_THROTTLE_S = 0.8
+
+# Hard ceiling on total wall-clock time update_flights_in_area() will spend making REAL
+# (non-cached) detail fetches in a single cycle. DETAIL_FETCH_THROTTLE_S keeps any one
+# burst from tripping FlightRadar24's rate limit, but does nothing to bound the TOTAL
+# cycle duration when many flights are uncached at once (a naturally busy radius, or
+# every flight right after a coordinator reload) -- confirmed live: a ~9-minute full HA
+# freeze (the entire frontend stopped responding, even a fresh page load) traced back to
+# exactly this. Kept comfortably under the 10s "slow entity update" watchdog threshold
+# HA itself warns about. Once the budget is spent, remaining flights this cycle reuse
+# their last known detail data if we have any (see the allow_real_fetch fallback in
+# _update_flights_data) rather than making a fresh call or being dropped outright --
+# only genuinely new, never-before-seen flights get skipped for one cycle when the
+# budget runs out, same as an individual fetch failure already was.
+DETAIL_FETCH_TIME_BUDGET_S = 6.0
+
+# FlightRadar24's area/"zones" listing endpoint (the OTHER call this file makes --
+# get_flights(bounds=...), separate from the per-flight detail endpoint throttled above)
+# has its own, separate soft-block behavior: instead of an HTTP error, a blocked request
+# gets a valid 200 response with an empty flight list. Nothing distinguishes that from a
+# genuine "no traffic in the area right now" response at this layer. Without this grace
+# window, update_flights_in_area() below used to overwrite self._in_area with {} on every
+# single blocked cycle, immediately wiping the sensor's flights attribute -- reported live
+# as "the card sometimes shows no data" even when there really were nearby flights moments
+# earlier. Keep serving the last known-good area list for up to this many seconds since it
+# was last genuinely non-empty (flagged via self.area_stale so sensor.py/the dashboard card
+# can show it's serving cached data); past this window, trust an empty result as real --
+# otherwise a genuine, prolonged lull would show stale flights forever.
+AREA_STALE_GRACE_S = 600.0
 from ..const import (
     EVENT_ENTRY,
     EVENT_EXIT,
@@ -77,7 +123,9 @@ class FlightType(Enum):
 
 class FlightProcessor:
     __slots__ = ('_in_area', '_tracked', '_most_tracked', '_entered', '_exited', '_min_altitude', '_max_altitude',
-                 '_point', '_client', '_bounds', '_event_manager', '_auto_cleanup')
+                 '_point', '_client', '_bounds', '_event_manager', '_auto_cleanup',
+                 '_last_nonempty_monotonic', '_area_stale',
+                 '_last_most_tracked_nonempty_monotonic', '_most_tracked_stale')
 
     def __init__(
             self,
@@ -101,6 +149,10 @@ class FlightProcessor:
         self._most_tracked: dict[str, dict[str, Any]] | None = None
         self._entered: list[dict[str, Any]] = []
         self._exited: list[dict[str, Any]] = []
+        self._last_nonempty_monotonic: float | None = None
+        self._area_stale: bool = False
+        self._last_most_tracked_nonempty_monotonic: float | None = None
+        self._most_tracked_stale: bool = False
 
     @property
     def tracked(self) -> dict[str, dict[str, Any]]:
@@ -115,8 +167,23 @@ class FlightProcessor:
         return list(self._in_area.values()) if self._in_area else []
 
     @property
+    def area_stale(self) -> bool:
+        # True while update_flights_in_area() is serving a cached area list because the
+        # most recent fetch came back empty and is suspected to be a soft block rather
+        # than genuine zero traffic -- see AREA_STALE_GRACE_S above.
+        return self._area_stale
+
+    @property
     def most_tracked_list(self) -> list[dict[str, Any]] | None:
         return list(self._most_tracked.values()) if self._most_tracked else None
+
+    @property
+    def most_tracked_stale(self) -> bool:
+        # Same meaning as area_stale above, for the separate "most tracked" endpoint --
+        # True while update_most_tracked() is serving a cached list because the most
+        # recent get_most_tracked() call came back empty and is suspected to be a soft
+        # block rather than genuinely zero tracked flights. See AREA_STALE_GRACE_S.
+        return self._most_tracked_stale
 
     @property
     def entered_list(self) -> list[dict[str, Any]]:
@@ -142,6 +209,24 @@ class FlightProcessor:
 
     def set_tracked(self, tracked: dict[str, dict[str, Any]]) -> None:
         self._tracked = tracked
+
+    def set_in_area(self, in_area: dict[str, dict[str, Any]]) -> None:
+        # Mirrors set_tracked() above, but ALSO seeds _last_nonempty_monotonic (and
+        # clears _area_stale) -- called only from sensor.py's FlightRadar24RestoreSensor
+        # at HA startup, to close a DIFFERENT gap than AREA_STALE_GRACE_S normally
+        # covers. AREA_STALE_GRACE_S protects an already-warm self._in_area from a
+        # transient soft block; a cold start has nothing to protect at all
+        # (self._in_area starts empty, self._last_nonempty_monotonic starts None), so
+        # the very first post-restart poll -- if it happens to be soft-blocked -- wipes
+        # straight to empty with zero grace window. Confirmed live: after an HA restart,
+        # sensor.flightradar24_current_in_area came back empty with stale=false and
+        # STAYED that way for several minutes with a real flight independently confirmed
+        # present. Restoring the last known flight list from the entity's recorded state
+        # AND stamping _last_nonempty_monotonic as "now" gives that first post-restart
+        # poll the same grace-window protection a warm cycle would have had.
+        self._in_area = in_area
+        self._last_nonempty_monotonic = time.monotonic()
+        self._area_stale = False
 
     def enable_most_tracked(self) -> None:
         self._most_tracked = {}
@@ -169,11 +254,65 @@ class FlightProcessor:
         self._entered = {}
         self._exited = {}
         flights = self._client.get_flights(bounds=self._bounds)
+
+        if not flights and self._in_area and self._last_nonempty_monotonic is not None and (
+            time.monotonic() - self._last_nonempty_monotonic < AREA_STALE_GRACE_S
+        ):
+            # Suspected soft block (see AREA_STALE_GRACE_S above): leave self._in_area
+            # completely untouched and skip the entered/exited bookkeeping below entirely
+            # -- from our perspective nothing genuinely changed, so no flight should be
+            # reported as having "exited" just because this one cycle's fetch came back
+            # empty. Only a non-suspect empty result (below, once the grace window has
+            # elapsed) legitimately means every previously-tracked flight has left.
+            if not self._area_stale:
+                # Log only on the transition INTO suspected-block state, not on every
+                # cached cycle -- diagnosing today's live incident required manual
+                # docker exec probing because nothing was logged at the time; this
+                # (plus the recovery log below) makes it diagnosable from
+                # home-assistant.log alone next time.
+                _LOGGER.warning(
+                    "Area/zones flight feed returned empty; suspected soft block "
+                    "(FlightRadar24 anti-bot), serving cached in-area flight list "
+                    "for up to %.0fs since last real data", AREA_STALE_GRACE_S,
+                )
+            self._area_stale = True
+            return
+
+        # Either flights is non-empty (this is a real fetch), or it's empty but past the
+        # grace window / with nothing cached to protect -- both cases fall through to the
+        # normal path below and let current end up correctly empty or populated, so the
+        # entered/exited comparison against self._in_area still fires real EVENT_EXIT
+        # events for a genuine, prolonged "everyone left the area" transition.
+        if self._area_stale and flights:
+            # Only log "recovered" when real (non-empty) data actually came back, not
+            # when we merely gave up caching because the grace window expired on a
+            # still-empty response -- that's not a recovery, just accepting emptiness.
+            _LOGGER.info("Area/zones flight feed recovered after suspected soft block")
+        self._area_stale = False
         current: dict[str, dict[str, Any]] = {}
-        for obj in flights:
-            if not self._min_altitude <= obj.altitude <= self._max_altitude:
-                continue
-            self._update_flights_data(obj, current, self._in_area, FlightType.IN_AREA)
+        if flights:
+            self._last_nonempty_monotonic = time.monotonic()
+            budget_deadline = time.monotonic() + DETAIL_FETCH_TIME_BUDGET_S
+            for obj in flights:
+                if not self._min_altitude <= obj.altitude <= self._max_altitude:
+                    continue
+                try:
+                    self._update_flights_data(
+                        obj, current, self._in_area, FlightType.IN_AREA,
+                        allow_real_fetch=time.monotonic() < budget_deadline,
+                    )
+                except Exception:
+                    # One flight's detail fetch failing (429, transient network error, etc.)
+                    # used to abort this ENTIRE method before self._in_area was ever
+                    # reassigned below -- discarding every flight already successfully
+                    # processed earlier in this same loop, not just the one that failed.
+                    # On a large area that's a near-guaranteed full wipeout every cycle.
+                    # Skipping just the one flight (it'll be retried next cycle) keeps
+                    # everything else that succeeded.
+                    _LOGGER.warning("%s: skipping flight (detail fetch failed)", obj.id, exc_info=True)
+                    continue
+        else:
+            self._last_nonempty_monotonic = None
 
         if self._in_area is not None:
             entries = current.keys() - self._in_area.keys()
@@ -303,8 +442,40 @@ class FlightProcessor:
         if self._most_tracked is None:
             return
         flights = self._client.get_most_tracked()
+        data = flights.get('data') if flights else None
+
+        if not data and self._most_tracked and self._last_most_tracked_nonempty_monotonic is not None and (
+            time.monotonic() - self._last_most_tracked_nonempty_monotonic < AREA_STALE_GRACE_S
+        ):
+            # Same soft-block failure mode as update_flights_in_area() above (see the
+            # AREA_STALE_GRACE_S comment): FlightRadar24's "most tracked" endpoint can
+            # also return a valid response with an empty/missing 'data' list instead of
+            # an error. This used to unconditionally fall through to
+            # `self._most_tracked = current`, silently wiping the most_tracked sensor's
+            # flights every blocked cycle -- the exact same latent bug
+            # update_flights_in_area() had before today's fix, just never hit because
+            # nothing on the live dashboard currently displays most_tracked data.
+            # Reusing AREA_STALE_GRACE_S rather than a separate constant: this endpoint's
+            # soft-block behavior and consequences are identical to the area/zones one,
+            # so there's no reason for its grace window to differ.
+            if not self._most_tracked_stale:
+                _LOGGER.warning(
+                    "Most-tracked flight feed returned empty; suspected soft block "
+                    "(FlightRadar24 anti-bot), serving cached most-tracked list "
+                    "for up to %.0fs since last real data", AREA_STALE_GRACE_S,
+                )
+            self._most_tracked_stale = True
+            return
+
+        if self._most_tracked_stale and data:
+            # Only log "recovered" when real (non-empty) data actually came back, not
+            # when we merely gave up caching because the grace window expired on a
+            # still-empty response.
+            _LOGGER.info("Most-tracked flight feed recovered after suspected soft block")
+        self._most_tracked_stale = False
+
         current: dict[str, dict[str, Any]] = {}
-        for obj in flights.get('data'):
+        for obj in (data or []):
             current[obj['flight_id']] = {
                 'id': obj.get('flight_id'),
                 'flight_number': obj.get('flight'),
@@ -319,6 +490,12 @@ class FlightProcessor:
                 'aircraft_model': obj.get('type'),
                 'on_ground': obj.get('on_ground'),
             }
+
+        if data:
+            self._last_most_tracked_nonempty_monotonic = time.monotonic()
+        else:
+            self._last_most_tracked_nonempty_monotonic = None
+
         entries = [current[x] for x in (current.keys() - self._most_tracked.keys())]
         self._most_tracked = current
         self._event_manager.add_events(EVENT_MOST_TRACKED_NEW, entries)
@@ -328,6 +505,7 @@ class FlightProcessor:
                              current: dict[str, dict[str, Any]],
                              tracked: dict[str, dict[str, Any]],
                              sensor_type: FlightType | None = None,
+                             allow_real_fetch: bool = True,
                              ) -> None:
         previous_flight = tracked.get(obj.id) if tracked is not None else None
         last_position = previous_flight.get('on_ground') if previous_flight is not None else None
@@ -337,8 +515,28 @@ class FlightProcessor:
         if (tracked is not None and obj.id in tracked and self._is_valid(tracked[obj.id])
                 and to_int(last_position) == obj.on_ground):
             flight = tracked[obj.id]
+        elif not allow_real_fetch and previous_flight is not None and self._is_valid(previous_flight):
+            # This cycle's detail-fetch time budget (DETAIL_FETCH_TIME_BUDGET_S) is
+            # already spent. Reuse whatever detail data we have for this flight rather
+            # than making a fresh (slow, rate-limited) call or dropping it outright --
+            # the live positional fields below get refreshed from `obj` regardless, so
+            # this only leaves route/aircraft-type/etc. up to one cycle stale, which is
+            # a much better trade than the multi-minute freeze this budget exists to
+            # prevent. A flight we've genuinely never seen before (no previous_flight)
+            # still falls through to the real fetch below -- there's nothing to reuse.
+            flight = previous_flight
         else:
-            data = self._client.get_flight_details(obj)
+            # Throttle real (non-cached) detail fetches -- see DETAIL_FETCH_THROTTLE_S
+            # comment at the top of this file. This runs in HA's executor thread pool,
+            # not the event loop, so a plain sleep here doesn't block anything else.
+            # Deliberately in `finally`, not just after a successful call: a FAILED
+            # fetch (e.g. still-active 429) must be throttled too, or a string of
+            # failures retries with zero delay between them -- hammering an endpoint
+            # that's already rate-limiting us, which can only make things worse.
+            try:
+                data = self._client.get_flight_details(obj)
+            finally:
+                time.sleep(DETAIL_FETCH_THROTTLE_S)
             flight = self._get_flight_data(data)
         if flight is not None:
             current[flight['id']] = flight
