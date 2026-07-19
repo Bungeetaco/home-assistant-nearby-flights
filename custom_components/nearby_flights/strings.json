@@ -1,0 +1,50 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "description": "Fill in the location to track and your OpenSky Network API credentials.",
+        "data": {
+          "radius": "Radius in meters",
+          "latitude": "Latitude",
+          "longitude": "Longitude",
+          "scan_interval": "Update interval in seconds",
+          "opensky_client_id": "OpenSky client ID",
+          "opensky_client_secret": "OpenSky client secret"
+        }
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "description": "Edit parameters for the location to track.",
+        "data": {
+          "radius": "Radius in meters",
+          "latitude": "Latitude",
+          "longitude": "Longitude",
+          "scan_interval": "Update interval in seconds",
+          "min_altitude": "Minimum altitude",
+          "max_altitude": "Maximum altitude",
+          "opensky_client_id": "OpenSky client ID",
+          "opensky_client_secret": "OpenSky client secret"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "in_area": { "name": "Current in area" },
+      "entered": { "name": "Entered area" },
+      "exited": { "name": "Exited area" }
+    },
+    "switch": {
+      "scanning": { "name": "API data fetching" }
+    }
+  },
+  "issues": {
+    "area_stale": {
+      "title": "Nearby Flights area data may be temporarily blocked",
+      "description": "The Nearby Flights integration for **{name}** has been showing cached area/zone data for more than {minutes} minutes. This usually means OpenSky's servers are temporarily rate-limiting the area feed, or the request is failing outright. Sensors that depend on aircraft currently in the area may be stale until this clears. No action is needed - this should resolve on its own once the feed recovers, and this issue will disappear automatically when fresh data is received again."
+    }
+  }
+}

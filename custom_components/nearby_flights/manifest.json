@@ -1,0 +1,16 @@
+{
+  "domain": "nearby_flights",
+  "name": "Nearby Flights (OpenSky/adsbdb, formerly FlightRadar24 fork)",
+  "codeowners": [
+    "@AlexandrErohin",
+    "@Bungeetaco"
+  ],
+  "config_flow": true,
+  "documentation": "https://github.com/Bungeetaco/nearby-flights-dashboard-fork",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/Bungeetaco/nearby-flights-dashboard-fork/issues",
+  "requirements": [
+    "requests>=2.28.0"
+  ],
+  "version": "2.0.0"
+}

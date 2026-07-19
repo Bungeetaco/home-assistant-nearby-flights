@@ -1,6 +1,6 @@
 {
-  "name": "Flightradar24",
-  "filename": "flightradar24.zip",
+  "name": "Nearby Flights",
+  "filename": "nearby_flights.zip",
   "homeassistant": "2023.9.3",
   "render_readme": true,
   "zip_release": true

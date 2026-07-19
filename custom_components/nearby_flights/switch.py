@@ -98,7 +98,6 @@ class FlightRadar24ScanEntity(
         self.coordinator.scanning = False
 
         self.coordinator.flight.clear_live_data()
-        self.coordinator.airport.clear_live_data()
 
         self.coordinator.async_set_updated_data(None)
 

@@ -1,11 +1,22 @@
 import math
-from typing import Any
+from typing import Any, NamedTuple
 
 EARTH_RADIUS_KM = 6371.0
 KM_PER_DEG_LAT = 111.32
 METERS_PER_FOOT = 0.3048
 MPS_TO_KNOTS = 1.943844
 MPS_TO_FPM = 196.850394
+
+
+class Point(NamedTuple):
+    """Trivial lat/lon container.
+
+    Replaces the FlightRadar24 package's own `Entity` class, which was used
+    only for this - the last remaining thing that package supplied once the
+    FR24 client itself was removed.
+    """
+    latitude: float
+    longitude: float
 
 
 def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -55,15 +66,6 @@ def to_int(element: Any) -> None | int:
         return None
 
 
-def to_float(element: Any) -> None | float:
-    if element is None:
-        return None
-    try:
-        return float(element)
-    except ValueError:
-        return None
-
-
 PHASE_VERTICAL_SPEED_THRESHOLD_FPM = 300.0
 
 
@@ -86,14 +88,3 @@ def flight_phase(on_ground: bool | None, vertical_speed_fpm: float | None) -> st
     if vertical_speed_fpm <= -PHASE_VERTICAL_SPEED_THRESHOLD_FPM:
         return "Landing"
     return "Cruising"
-
-
-def get_value(dictionary: dict, keys: list) -> Any | None:
-    nested_dict = dictionary
-
-    for key in keys:
-        try:
-            nested_dict = nested_dict[key]
-        except Exception:
-            return None
-    return nested_dict
