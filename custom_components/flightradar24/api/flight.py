@@ -380,7 +380,12 @@ class FlightProcessor:
             'aircraft_model': aircraft.get('type'),
             'aircraft_code': aircraft.get('icao_type'),
             'airline': airline.get('name'),
-            'airline_short': None,
+            # adsbdb has no distinct "short name" field the way FR24 did (which
+            # is why this used to be hardcoded None) - its 'name' field is
+            # already short enough for the ticker ("Air Canada", "Porter
+            # Airlines"), and the ticker card displays airline_short, not
+            # airline, so leaving this None meant the airline name never showed.
+            'airline_short': airline.get('name'),
             'airline_iata': airline.get('iata'),
             'airline_icao': airline.get('icao'),
             'airport_origin_name': origin.get('name'),
