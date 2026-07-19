@@ -38,7 +38,16 @@ class AdsbdbClient:
             )
             if response.status_code == 200:
                 result = (response.json().get("response") or {}).get("flightroute")
-        except (requests.RequestException, ValueError) as err:
+        except Exception as err:
+            # Deliberately broad: adsbdb is a third-party API with no formal
+            # response-schema guarantee. A 200 response with an unexpected shape
+            # (e.g. "response" as a string rather than a dict, seen today for
+            # error cases on non-200 statuses but not contractually ruled out on
+            # 200 too) must degrade to "no enrichment data" here, not raise -
+            # losing a flight's route/aircraft-type info is fine, losing its
+            # entire position/altitude/speed data because of it is not (see the
+            # per-flight try/except around the caller in api/flight.py, which
+            # only exists as defense-in-depth for whatever this doesn't catch).
             _LOGGER.debug("adsbdb: callsign lookup failed for %s: %s", callsign, err)
 
         self._route_cache[callsign] = result
@@ -58,7 +67,16 @@ class AdsbdbClient:
             )
             if response.status_code == 200:
                 result = (response.json().get("response") or {}).get("aircraft")
-        except (requests.RequestException, ValueError) as err:
+        except Exception as err:
+            # Deliberately broad: adsbdb is a third-party API with no formal
+            # response-schema guarantee. A 200 response with an unexpected shape
+            # (e.g. "response" as a string rather than a dict, seen today for
+            # error cases on non-200 statuses but not contractually ruled out on
+            # 200 too) must degrade to "no enrichment data" here, not raise -
+            # losing a flight's route/aircraft-type info is fine, losing its
+            # entire position/altitude/speed data because of it is not (see the
+            # per-flight try/except around the caller in api/flight.py, which
+            # only exists as defense-in-depth for whatever this doesn't catch).
             _LOGGER.debug("adsbdb: aircraft lookup failed for %s: %s", icao24, err)
 
         self._aircraft_cache[icao24] = result

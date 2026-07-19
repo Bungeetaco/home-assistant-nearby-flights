@@ -70,10 +70,15 @@ def is_helicopter(flight) -> bool:
     """Check if a flight is a helicopter based on callsign, model or ICAO code."""
 
     def get_val(key):
+        # `flight.get(key, "")` only falls back to "" when the key is absent, not
+        # when it's present with an explicit None value (e.g. adsbdb had no
+        # aircraft-type match for this icao24) - `or ""` is needed on both
+        # branches so a None value coerces to "" instead of str(None) -> "None",
+        # which would otherwise get fed into the regexes below.
         return str(
-            flight.get(key, "")
+            (flight.get(key, "") or "")
             if isinstance(flight, dict)
-            else getattr(flight, key, "") or ""
+            else (getattr(flight, key, "") or "")
         )
 
     callsign = get_val("callsign")
@@ -328,7 +333,18 @@ class FlightProcessor:
                 altitude_ft = meters_to_feet(state["altitude_m"])
                 if altitude_ft is None or not self._min_altitude <= altitude_ft <= self._max_altitude:
                     continue
-                flight = self._build_flight_from_opensky(state, altitude_ft)
+                try:
+                    flight = self._build_flight_from_opensky(state, altitude_ft)
+                except Exception:
+                    # Same reasoning as the FR24 path's per-flight try/except below:
+                    # one flight's adsbdb enrichment call misbehaving (unexpected
+                    # response shape, etc.) must not discard every other flight
+                    # already built earlier in this same loop. adsbdb.py already
+                    # degrades its own failures to None internally, but this is a
+                    # deliberate second layer of protection against any other
+                    # per-flight failure here, not just adsbdb's.
+                    _LOGGER.warning("%s: skipping flight (build failed)", state.get("icao24"), exc_info=True)
+                    continue
                 if flight is not None:
                     current[flight["id"]] = flight
         else:
