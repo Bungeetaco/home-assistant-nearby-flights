@@ -17,6 +17,8 @@ from .const import (
 from .api.event import EventManager, Event
 from .api.flight import FlightProcessor
 from .api.airport import AirportProcessor
+from .api.opensky import OpenSkyClient
+from .api.adsbdb import AdsbdbClient
 from logging import Logger
 from FlightRadar24 import FlightRadar24API, Entity
 
@@ -34,10 +36,16 @@ class FlightRadar24Coordinator(DataUpdateCoordinator[int]):
             min_altitude: int,
             max_altitude: int,
             point: Entity,
+            opensky_client: OpenSkyClient | None = None,
+            adsbdb_client: AdsbdbClient | None = None,
+            opensky_bbox: tuple[float, float, float, float] | None = None,
     ) -> None:
         self.unique_id = unique_id
         self.event_manager = EventManager()
-        self.flight = FlightProcessor(client, self.event_manager, min_altitude, max_altitude, point, bounds)
+        self.flight = FlightProcessor(
+            client, self.event_manager, min_altitude, max_altitude, point, bounds,
+            opensky_client=opensky_client, adsbdb_client=adsbdb_client, opensky_bbox=opensky_bbox,
+        )
         self.airport = AirportProcessor(client)
         self.enable_tracker: bool = False
         self.scanning: bool = True

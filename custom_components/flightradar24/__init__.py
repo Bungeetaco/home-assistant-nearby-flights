@@ -5,6 +5,9 @@ from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from .const import DOMAIN
 from .coordinator import FlightRadar24Coordinator
+from .api.opensky import OpenSkyClient
+from .api.adsbdb import AdsbdbClient
+from .api.helper import bbox_from_point_radius
 from homeassistant.const import (
     CONF_LATITUDE,
     CONF_LONGITUDE,
@@ -20,6 +23,8 @@ from .const import (
     CONF_MOST_TRACKED_DEFAULT,
     CONF_ENABLE_TRACKER,
     CONF_ENABLE_TRACKER_DEFAULT,
+    CONF_OPENSKY_CLIENT_ID,
+    CONF_OPENSKY_CLIENT_SECRET,
     MIN_ALTITUDE,
     MAX_ALTITUDE,
 )
@@ -51,6 +56,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     bounds = client.get_bounds_by_point(latitude, longitude, entry.data[CONF_RADIUS])
 
+    opensky_client_id = entry.data.get(CONF_OPENSKY_CLIENT_ID)
+    opensky_client_secret = entry.data.get(CONF_OPENSKY_CLIENT_SECRET)
+    opensky_client = None
+    adsbdb_client = None
+    opensky_bbox = None
+    if opensky_client_id and opensky_client_secret:
+        # In-area feed sources from OpenSky + adsbdb instead of FlightRadar24
+        # when these are configured - see FlightProcessor.update_flights_in_area
+        # (api/flight.py). Only affects the in-area/"zones" feed; other sensors
+        # (tracked flights, most-tracked, airport schedules) stay on FR24, which
+        # has no OpenSky/adsbdb equivalent for that data.
+        opensky_client = OpenSkyClient(opensky_client_id, opensky_client_secret)
+        adsbdb_client = AdsbdbClient()
+        opensky_bbox = bbox_from_point_radius(latitude, longitude, entry.data[CONF_RADIUS] / 1000)
+
     coordinator = FlightRadar24Coordinator(
         hass,
         bounds,
@@ -61,6 +81,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         entry.data.get(CONF_MIN_ALTITUDE, MIN_ALTITUDE),
         entry.data.get(CONF_MAX_ALTITUDE, MAX_ALTITUDE),
         Entity(latitude, longitude),
+        opensky_client=opensky_client,
+        adsbdb_client=adsbdb_client,
+        opensky_bbox=opensky_bbox,
     )
 
     if entry.data.get(CONF_MOST_TRACKED, CONF_MOST_TRACKED_DEFAULT):

@@ -4,8 +4,10 @@ import time
 from typing import Any
 from enum import Enum
 from FlightRadar24 import FlightRadar24API, Flight, Entity
-from .helper import to_int, get_value
+from .helper import to_int, get_value, haversine_km, meters_to_feet, mps_to_knots, mps_to_fpm
 from .event import EventManager
+from .opensky import OpenSkyClient
+from .adsbdb import AdsbdbClient
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -125,7 +127,8 @@ class FlightProcessor:
     __slots__ = ('_in_area', '_tracked', '_most_tracked', '_entered', '_exited', '_min_altitude', '_max_altitude',
                  '_point', '_client', '_bounds', '_event_manager', '_auto_cleanup',
                  '_last_nonempty_monotonic', '_area_stale',
-                 '_last_most_tracked_nonempty_monotonic', '_most_tracked_stale')
+                 '_last_most_tracked_nonempty_monotonic', '_most_tracked_stale',
+                 '_opensky', '_adsbdb', '_opensky_bbox')
 
     def __init__(
             self,
@@ -136,6 +139,9 @@ class FlightProcessor:
             point: Entity,
             bounds: str,
             auto_cleanup: bool = False,
+            opensky_client: OpenSkyClient | None = None,
+            adsbdb_client: AdsbdbClient | None = None,
+            opensky_bbox: tuple[float, float, float, float] | None = None,
     ) -> None:
         self._min_altitude = min_altitude
         self._max_altitude = max_altitude
@@ -144,6 +150,15 @@ class FlightProcessor:
         self._bounds = bounds
         self._event_manager = event_manager
         self._auto_cleanup = auto_cleanup
+        # Area/"zones" in-area feed now sources from OpenSky (positions) + adsbdb
+        # (route/aircraft enrichment) instead of FlightRadar24 when configured -
+        # see update_flights_in_area() below. self._client (FlightRadar24API) is
+        # still used for update_flights_tracked/update_most_tracked/_find_flight,
+        # which have no OpenSky/adsbdb equivalent and aren't on the live
+        # dashboard, so they're left on FR24 rather than dropped.
+        self._opensky = opensky_client
+        self._adsbdb = adsbdb_client
+        self._opensky_bbox = opensky_bbox
         self._in_area: dict[str, dict[str, Any]] | None = None
         self._tracked: dict[str, dict[str, Any]] = {}
         self._most_tracked: dict[str, dict[str, Any]] | None = None
@@ -253,40 +268,178 @@ class FlightProcessor:
     def update_flights_in_area(self) -> None:
         self._entered = {}
         self._exited = {}
+
+        if self._opensky is not None and self._opensky_bbox is not None:
+            current = self._update_flights_in_area_opensky()
+        else:
+            current = self._update_flights_in_area_fr24()
+
+        if current is None:
+            # Suspected soft block / transient failure - the grace-window branch
+            # inside whichever backend ran above already logged it and left
+            # self._in_area untouched. Skip entered/exited bookkeeping entirely,
+            # same reasoning as before: an empty result we don't trust shouldn't
+            # report every previously-seen flight as having "exited".
+            return
+
+        if self._in_area is not None:
+            entries = current.keys() - self._in_area.keys()
+            self._entered = [current[x] for x in entries]
+            exits = self._in_area.keys() - current.keys()
+            self._exited = [self._in_area[x] for x in exits]
+            self._event_manager.add_events(EVENT_ENTRY, self._entered)
+            self._event_manager.add_events(EVENT_EXIT, self._exited)
+        self._in_area = current
+
+    def _update_flights_in_area_opensky(self) -> dict[str, dict[str, Any]] | None:
+        """OpenSky (positions) + adsbdb (route/aircraft enrichment) backend for
+        the in-area feed - replaces the FlightRadar24 zones/detail calls below,
+        which were the endpoint that kept getting soft-blocked. Returns None to
+        mean "treat this cycle as a suspected transient failure, keep serving
+        cached data" - same AREA_STALE_GRACE_S contract the FR24 path used.
+        """
+        lamin, lomin, lamax, lomax = self._opensky_bbox
+        states = None
+        try:
+            states = self._opensky.get_states_bbox(lamin, lomin, lamax, lomax)
+        except Exception as e:
+            _LOGGER.warning("OpenSky states/all request failed: %s", e)
+
+        if not states and self._in_area and self._last_nonempty_monotonic is not None and (
+            time.monotonic() - self._last_nonempty_monotonic < AREA_STALE_GRACE_S
+        ):
+            if not self._area_stale:
+                _LOGGER.warning(
+                    "OpenSky area feed returned empty/failed; suspected transient "
+                    "issue, serving cached in-area flight list for up to %.0fs "
+                    "since last real data", AREA_STALE_GRACE_S,
+                )
+            self._area_stale = True
+            return None
+
+        if self._area_stale and states:
+            _LOGGER.info("OpenSky area feed recovered after suspected transient issue")
+        self._area_stale = False
+
+        current: dict[str, dict[str, Any]] = {}
+        if states:
+            self._last_nonempty_monotonic = time.monotonic()
+            for state in states:
+                altitude_ft = meters_to_feet(state["altitude_m"])
+                if altitude_ft is None or not self._min_altitude <= altitude_ft <= self._max_altitude:
+                    continue
+                flight = self._build_flight_from_opensky(state, altitude_ft)
+                if flight is not None:
+                    current[flight["id"]] = flight
+        else:
+            self._last_nonempty_monotonic = None
+
+        return current
+
+    def _build_flight_from_opensky(self, state: dict[str, Any], altitude_ft: float) -> dict[str, Any] | None:
+        icao24 = state["icao24"]
+        callsign = state["callsign"] or None
+        previous = self._in_area.get(icao24) if self._in_area else None
+        previous_closest_distance = previous.get('closest_distance') if previous is not None else None
+        last_position = previous.get('on_ground') if previous is not None else None
+
+        route = self._adsbdb.lookup_callsign(callsign) if self._adsbdb and callsign else None
+        aircraft = (self._adsbdb.lookup_aircraft(icao24) if self._adsbdb else None) or {}
+        origin = (route or {}).get('origin') or {}
+        destination = (route or {}).get('destination') or {}
+        airline = (route or {}).get('airline') or {}
+
+        new_distance = haversine_km(
+            self._point.latitude, self._point.longitude, state["latitude"], state["longitude"]
+        )
+
+        flight: dict[str, Any] = {
+            'id': icao24,
+            'flight_number': None,
+            'callsign': callsign,
+            'aircraft_registration': aircraft.get('registration'),
+            'aircraft_photo_small': None,
+            'aircraft_photo_medium': None,
+            'aircraft_photo_large': aircraft.get('url_photo'),
+            'aircraft_model': aircraft.get('type'),
+            'aircraft_code': aircraft.get('icao_type'),
+            'airline': airline.get('name'),
+            'airline_short': None,
+            'airline_iata': airline.get('iata'),
+            'airline_icao': airline.get('icao'),
+            'airport_origin_name': origin.get('name'),
+            'airport_origin_code_iata': origin.get('iata_code'),
+            'airport_origin_code_icao': origin.get('icao_code'),
+            'airport_origin_country_name': origin.get('country_name'),
+            'airport_origin_country_code': origin.get('country_iso_name'),
+            'airport_origin_city': origin.get('municipality'),
+            'airport_origin_timezone_offset': None,
+            'airport_origin_timezone_abbr': None,
+            'airport_origin_terminal': None,
+            'airport_origin_latitude': origin.get('latitude'),
+            'airport_origin_longitude': origin.get('longitude'),
+            'airport_destination_name': destination.get('name'),
+            'airport_destination_code_iata': destination.get('iata_code'),
+            'airport_destination_code_icao': destination.get('icao_code'),
+            'airport_destination_country_name': destination.get('country_name'),
+            'airport_destination_country_code': destination.get('country_iso_name'),
+            'airport_destination_city': destination.get('municipality'),
+            'airport_destination_timezone_offset': None,
+            'airport_destination_timezone_abbr': None,
+            'airport_destination_terminal': None,
+            'airport_destination_latitude': destination.get('latitude'),
+            'airport_destination_longitude': destination.get('longitude'),
+            'time_scheduled_departure': None,
+            'time_scheduled_arrival': None,
+            'time_real_departure': None,
+            'time_real_arrival': None,
+            'time_estimated_departure': None,
+            'time_estimated_arrival': None,
+            'latitude': state["latitude"],
+            'longitude': state["longitude"],
+            'altitude': altitude_ft,
+            'heading': state["true_track"],
+            'ground_speed': mps_to_knots(state["velocity_mps"]),
+            'squawk': state["squawk"],
+            'vertical_speed': mps_to_fpm(state["vertical_rate_mps"]),
+            'aircraft_icao_24bit': icao24,
+            'distance': new_distance,
+            'closest_distance': min(
+                new_distance,
+                previous_closest_distance if previous_closest_distance is not None else new_distance,
+            ),
+            'on_ground': state["on_ground"],
+        }
+        flight['aircraft_category'] = "Helicopter" if is_helicopter(flight) else "Airplane"
+        self._takeoff_and_landing(flight, last_position, state["on_ground"], FlightType.IN_AREA)
+        return flight
+
+    def _update_flights_in_area_fr24(self) -> dict[str, dict[str, Any]] | None:
+        """Original FlightRadar24-backed in-area feed. Kept as a fallback path
+        for when OpenSky credentials aren't configured (self._opensky is None)
+        - not used in normal operation once OpenSky/adsbdb are set up, since
+        this is the exact endpoint that kept getting soft-blocked.
+        """
         flights = self._client.get_flights(bounds=self._bounds)
 
         if not flights and self._in_area and self._last_nonempty_monotonic is not None and (
             time.monotonic() - self._last_nonempty_monotonic < AREA_STALE_GRACE_S
         ):
             # Suspected soft block (see AREA_STALE_GRACE_S above): leave self._in_area
-            # completely untouched and skip the entered/exited bookkeeping below entirely
-            # -- from our perspective nothing genuinely changed, so no flight should be
-            # reported as having "exited" just because this one cycle's fetch came back
-            # empty. Only a non-suspect empty result (below, once the grace window has
-            # elapsed) legitimately means every previously-tracked flight has left.
+            # completely untouched -- from our perspective nothing genuinely changed,
+            # so no flight should be reported as having "exited" just because this one
+            # cycle's fetch came back empty. Only a non-suspect empty result (below,
+            # once the grace window has elapsed) legitimately means everyone left.
             if not self._area_stale:
-                # Log only on the transition INTO suspected-block state, not on every
-                # cached cycle -- diagnosing today's live incident required manual
-                # docker exec probing because nothing was logged at the time; this
-                # (plus the recovery log below) makes it diagnosable from
-                # home-assistant.log alone next time.
                 _LOGGER.warning(
                     "Area/zones flight feed returned empty; suspected soft block "
                     "(FlightRadar24 anti-bot), serving cached in-area flight list "
                     "for up to %.0fs since last real data", AREA_STALE_GRACE_S,
                 )
             self._area_stale = True
-            return
+            return None
 
-        # Either flights is non-empty (this is a real fetch), or it's empty but past the
-        # grace window / with nothing cached to protect -- both cases fall through to the
-        # normal path below and let current end up correctly empty or populated, so the
-        # entered/exited comparison against self._in_area still fires real EVENT_EXIT
-        # events for a genuine, prolonged "everyone left the area" transition.
         if self._area_stale and flights:
-            # Only log "recovered" when real (non-empty) data actually came back, not
-            # when we merely gave up caching because the grace window expired on a
-            # still-empty response -- that's not a recovery, just accepting emptiness.
             _LOGGER.info("Area/zones flight feed recovered after suspected soft block")
         self._area_stale = False
         current: dict[str, dict[str, Any]] = {}
@@ -304,24 +457,15 @@ class FlightProcessor:
                 except Exception:
                     # One flight's detail fetch failing (429, transient network error, etc.)
                     # used to abort this ENTIRE method before self._in_area was ever
-                    # reassigned below -- discarding every flight already successfully
-                    # processed earlier in this same loop, not just the one that failed.
-                    # On a large area that's a near-guaranteed full wipeout every cycle.
-                    # Skipping just the one flight (it'll be retried next cycle) keeps
-                    # everything else that succeeded.
+                    # reassigned -- discarding every flight already successfully processed
+                    # earlier in this same loop, not just the one that failed. Skipping
+                    # just the one flight (it'll be retried next cycle) keeps the rest.
                     _LOGGER.warning("%s: skipping flight (detail fetch failed)", obj.id, exc_info=True)
                     continue
         else:
             self._last_nonempty_monotonic = None
 
-        if self._in_area is not None:
-            entries = current.keys() - self._in_area.keys()
-            self._entered = [current[x] for x in entries]
-            exits = self._in_area.keys() - current.keys()
-            self._exited = [self._in_area[x] for x in exits]
-            self._event_manager.add_events(EVENT_ENTRY, self._entered)
-            self._event_manager.add_events(EVENT_EXIT, self._exited)
-        self._in_area = current
+        return current
 
     def update_flights_tracked(self) -> None:
         if not self._tracked:

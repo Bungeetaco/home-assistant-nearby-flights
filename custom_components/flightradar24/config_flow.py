@@ -25,7 +25,10 @@ from .const import (
     TRACKER_NAME_CALLSIGN,
     TRACKER_NAME_CALLSIGN_ROUTE,
     TRACKER_NAME_REG_ROUTE,
+    CONF_OPENSKY_CLIENT_ID,
+    CONF_OPENSKY_CLIENT_SECRET,
 )
+from .api.opensky import OpenSkyClient, OpenSkyAuthError
 from FlightRadar24 import FlightRadar24API
 import homeassistant.helpers.config_validation as cv
 from homeassistant.data_entry_flow import FlowResult
@@ -78,6 +81,8 @@ class FlightRadarOptionsFlow(OptionsFlowWithConfigEntry):
         if user_input is not None:
             username = data.get(CONF_USERNAME)
             password = data.get(CONF_PASSWORD)
+            opensky_client_id = data.get(CONF_OPENSKY_CLIENT_ID)
+            opensky_client_secret = data.get(CONF_OPENSKY_CLIENT_SECRET)
 
             try:
                 if username and password:
@@ -88,6 +93,19 @@ class FlightRadarOptionsFlow(OptionsFlowWithConfigEntry):
             except Exception as error:
                 _LOGGER.error('FlightRadar24 Integration Exception - {}'.format(error))
                 errors['base'] = str(error)
+
+            if not errors:
+                try:
+                    if opensky_client_id and opensky_client_secret:
+                        opensky_client = OpenSkyClient(opensky_client_id, opensky_client_secret)
+                        await self.hass.async_add_executor_job(opensky_client.validate_credentials)
+                    elif opensky_client_secret and not opensky_client_id or (
+                        opensky_client_id and not opensky_client_secret
+                    ):
+                        errors['base'] = 'You need to pass both OpenSky client ID and secret'
+                except OpenSkyAuthError as error:
+                    _LOGGER.error('OpenSky Integration Exception - {}'.format(error))
+                    errors['base'] = str(error)
 
             if not errors:
                 self.hass.config_entries.async_update_entry(self.config_entry, data=user_input)
@@ -132,6 +150,14 @@ class FlightRadarOptionsFlow(OptionsFlowWithConfigEntry):
             ),
             vol.Optional(CONF_USERNAME, description={"suggested_value": data.get(CONF_USERNAME, '')}): cv.string,
             vol.Optional(CONF_PASSWORD, description={"suggested_value": data.get(CONF_PASSWORD, '')}): cv.string,
+            vol.Optional(
+                CONF_OPENSKY_CLIENT_ID,
+                description={"suggested_value": data.get(CONF_OPENSKY_CLIENT_ID, '')},
+            ): cv.string,
+            vol.Optional(
+                CONF_OPENSKY_CLIENT_SECRET,
+                description={"suggested_value": data.get(CONF_OPENSKY_CLIENT_SECRET, '')},
+            ): cv.string,
         })
 
         return self.async_show_form(step_id="init", data_schema=data_schema, errors=errors)
