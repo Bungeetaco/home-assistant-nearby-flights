@@ -16,6 +16,10 @@ jobs:
     steps:
       - name: "Checkout the repository"
         uses: "actions/checkout@v7"
+        with:
+          # Full history + tags, not just the tagged commit -- the changelog
+          # script below needs to walk commits back to the previous tag.
+          fetch-depth: 0
 
       - name: "Adjust version number"
         shell: "bash"
@@ -30,8 +34,12 @@ jobs:
           cd "${GITHUB_WORKSPACE}/custom_components/nearby_flights"
           zip nearby_flights.zip -r ./
 
+      - name: "Build the changelog"
+        shell: "bash"
+        run: python3 "${GITHUB_WORKSPACE}/.github/scripts/build_changelog.py" > "${GITHUB_WORKSPACE}/changelog.md"
+
       - name: "Create the release and upload the ZIP file"
         uses: softprops/action-gh-release@v3
         with:
           files: ${{ github.workspace }}/custom_components/nearby_flights/nearby_flights.zip
-          generate_release_notes: true
+          body_path: ${{ github.workspace }}/changelog.md
