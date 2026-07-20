@@ -11,9 +11,9 @@ MPS_TO_FPM = 196.850394
 class Point(NamedTuple):
     """Trivial lat/lon container.
 
-    Replaces the FlightRadar24 package's own `Entity` class, which was used
-    only for this - the last remaining thing that package supplied once the
-    FR24 client itself was removed.
+    Replaces the old backend vendor's client library's own `Entity` class,
+    which was used only for this - the last remaining thing that library
+    supplied before its client was removed entirely.
     """
     latitude: float
     longitude: float
@@ -35,8 +35,8 @@ def bbox_from_point_radius(
 ) -> tuple[float, float, float, float]:
     """Rectangular bounding box (lamin, lomin, lamax, lomax) around a point.
 
-    Same rectangular-box approximation FlightRadar24's own
-    get_bounds_by_point uses (not a true circle) - kept consistent so the
+    Same rectangular-box approximation the old backend's own
+    get_bounds_by_point used (not a true circle) - kept consistent so the
     existing "distance can exceed the configured radius near a corner, by up
     to radius*sqrt(2)" caveat still applies identically post-switch.
     """
@@ -70,12 +70,12 @@ PHASE_VERTICAL_SPEED_THRESHOLD_FPM = 300.0
 
 
 def flight_phase(on_ground: bool | None, vertical_speed_fpm: float | None) -> str | None:
-    """Coarse phase-of-flight label from data every backend provides
-    (on_ground + vertical rate), rather than the schedule/estimated times
-    only FlightRadar24 supplied - adsbdb has no live timing data, so the
-    OpenSky path can never populate time_scheduled_departure/
-    time_estimated_arrival/etc. the way the ticker card's dep/arr display
-    used to expect. +-300fpm is comfortably above the noise floor of a
+    """Coarse phase-of-flight label from data the backend provides
+    (on_ground + vertical rate), rather than schedule/estimated times -
+    adsbdb has no live timing data, so time_scheduled_departure/
+    time_estimated_arrival/etc. can never be populated the way the ticker
+    card's dep/arr display used to expect from the old backend. +-300fpm is
+    comfortably above the noise floor of a
     level cruise (which drifts a little from barometric/wind effects)
     without being so high it misses a real gentle climb or descent.
     """

@@ -5,7 +5,7 @@ from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 from .const import DOMAIN
-from .coordinator import FlightRadar24Coordinator
+from .coordinator import NearbyFlightsCoordinator
 from .api.opensky import OpenSkyClient
 from .api.adsbdb import AdsbdbClient
 from .api.helper import bbox_from_point_radius, Point
@@ -47,7 +47,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     adsbdb_client = AdsbdbClient()
     opensky_bbox = bbox_from_point_radius(latitude, longitude, entry.data[CONF_RADIUS] / 1000)
 
-    coordinator = FlightRadar24Coordinator(
+    coordinator = NearbyFlightsCoordinator(
         hass,
         entry.data[CONF_SCAN_INTERVAL],
         _LOGGER,

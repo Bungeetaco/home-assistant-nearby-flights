@@ -14,7 +14,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
-from .coordinator import FlightRadar24Coordinator
+from .coordinator import NearbyFlightsCoordinator
 
 
 async def async_setup_entry(
@@ -50,13 +50,13 @@ async def async_setup_entry(
     # ----------------------------------------------
 
     async_add_entities(
-        [FlightRadar24ScanEntity(coordinator, entry.entry_id)],
+        [NearbyFlightsScanEntity(coordinator, entry.entry_id)],
         False,
     )
 
 
-class FlightRadar24ScanEntity(
-    CoordinatorEntity[FlightRadar24Coordinator],
+class NearbyFlightsScanEntity(
+    CoordinatorEntity[NearbyFlightsCoordinator],
     SwitchEntity,
 ):
     _attr_has_entity_name = True
@@ -64,7 +64,7 @@ class FlightRadar24ScanEntity(
 
     def __init__(
         self,
-        coordinator: FlightRadar24Coordinator,
+        coordinator: NearbyFlightsCoordinator,
         entry_id: str,
     ) -> None:
         super().__init__(coordinator)

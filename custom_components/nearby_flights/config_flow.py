@@ -46,7 +46,7 @@ async def _validate_opensky(hass, client_id: str | None, client_secret: str | No
     return errors
 
 
-class FlightRadarConfigFlow(ConfigFlow, domain=DOMAIN):
+class NearbyFlightsConfigFlow(ConfigFlow, domain=DOMAIN):
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         errors: dict[str, str] = {}
@@ -79,10 +79,10 @@ class FlightRadarConfigFlow(ConfigFlow, domain=DOMAIN):
     @staticmethod
     @callback
     def async_get_options_flow(config_entry: ConfigEntry) -> OptionsFlow:
-        return FlightRadarOptionsFlow(config_entry)
+        return NearbyFlightsOptionsFlow(config_entry)
 
 
-class FlightRadarOptionsFlow(OptionsFlowWithConfigEntry):
+class NearbyFlightsOptionsFlow(OptionsFlowWithConfigEntry):
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         errors = {}

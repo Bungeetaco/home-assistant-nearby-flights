@@ -13,24 +13,24 @@ from .const import DOMAIN
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.helpers import entity_registry as er  # Imported for migration
-from .coordinator import FlightRadar24Coordinator
+from .coordinator import NearbyFlightsCoordinator
 import datetime
 import copy
 
 
 @dataclass
-class FlightRadar24SensorRequiredKeysMixin:
-    value: Callable[[FlightRadar24Coordinator], Any]
-    attributes: Callable[[FlightRadar24Coordinator], Any] | None
+class NearbyFlightsSensorRequiredKeysMixin:
+    value: Callable[[NearbyFlightsCoordinator], Any]
+    attributes: Callable[[NearbyFlightsCoordinator], Any] | None
 
 
 @dataclass
-class FlightRadar24SensorEntityDescription(SensorEntityDescription, FlightRadar24SensorRequiredKeysMixin):
+class NearbyFlightsSensorEntityDescription(SensorEntityDescription, NearbyFlightsSensorRequiredKeysMixin):
     """A class that describes sensor entities."""
 
 
-SENSOR_TYPES: tuple[FlightRadar24SensorEntityDescription, ...] = (
-    FlightRadar24SensorEntityDescription(
+SENSOR_TYPES: tuple[NearbyFlightsSensorEntityDescription, ...] = (
+    NearbyFlightsSensorEntityDescription(
         key="entered",
         translation_key="entered",
         icon="mdi:airplane-check",
@@ -38,7 +38,7 @@ SENSOR_TYPES: tuple[FlightRadar24SensorEntityDescription, ...] = (
         value=lambda coord: len(coord.flight.entered_list),
         attributes=lambda coord: {'flights': coord.flight.entered_list},
     ),
-    FlightRadar24SensorEntityDescription(
+    NearbyFlightsSensorEntityDescription(
         key="exited",
         translation_key="exited",
         icon="mdi:airplane-remove",
@@ -48,8 +48,8 @@ SENSOR_TYPES: tuple[FlightRadar24SensorEntityDescription, ...] = (
     ),
 )
 
-RESTORE_SENSOR_TYPES: tuple[FlightRadar24SensorEntityDescription, ...] = (
-    FlightRadar24SensorEntityDescription(
+RESTORE_SENSOR_TYPES: tuple[NearbyFlightsSensorEntityDescription, ...] = (
+    NearbyFlightsSensorEntityDescription(
         key="in_area",
         translation_key="in_area",
         icon="mdi:airplane-marker",
@@ -79,23 +79,23 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
 
     sensors = []
     for description in SENSOR_TYPES:
-        sensors.append(FlightRadar24Sensor(coordinator, description, entry.entry_id))
+        sensors.append(NearbyFlightsSensor(coordinator, description, entry.entry_id))
     for description in RESTORE_SENSOR_TYPES:
-        sensors.append(FlightRadar24RestoreSensor(coordinator, description, entry.entry_id))
+        sensors.append(NearbyFlightsRestoreSensor(coordinator, description, entry.entry_id))
     async_add_entities(sensors, False)
 
 
-class FlightRadar24Sensor(CoordinatorEntity[FlightRadar24Coordinator], SensorEntity):
+class NearbyFlightsSensor(CoordinatorEntity[NearbyFlightsCoordinator], SensorEntity):
     _attr_has_entity_name = True
-    entity_description: FlightRadar24SensorEntityDescription
+    entity_description: NearbyFlightsSensorEntityDescription
 
     # TELL THE RECORDER TO IGNORE THE MASSIVE FLIGHTS ARRAY
     _unrecorded_attributes = frozenset({"flights"})
 
     def __init__(
             self,
-            coordinator: FlightRadar24Coordinator,
-            description: FlightRadar24SensorEntityDescription,
+            coordinator: NearbyFlightsCoordinator,
+            description: NearbyFlightsSensorEntityDescription,
             entry_id: str,
     ) -> None:
         """Initialize."""
@@ -120,10 +120,10 @@ class FlightRadar24Sensor(CoordinatorEntity[FlightRadar24Coordinator], SensorEnt
         return self.entity_description.value(self.coordinator) is not None
 
 
-class FlightRadar24RestoreSensor(FlightRadar24Sensor, RestoreSensor):
+class NearbyFlightsRestoreSensor(NearbyFlightsSensor, RestoreSensor):
 
     # "flights" is excluded from recorder history here for the same reason the plain
-    # FlightRadar24Sensor already excludes it (large payload, not meaningful in a
+    # NearbyFlightsSensor already excludes it (large payload, not meaningful in a
     # history graph) -- restoring on reboot does NOT depend on this. RestoreEntity's
     # async_get_last_state() reads from homeassistant.helpers.restore_state's own
     # independent snapshot (.storage/core.restore_state, periodically dumped straight

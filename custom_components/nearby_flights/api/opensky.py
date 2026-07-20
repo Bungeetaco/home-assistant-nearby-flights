@@ -42,9 +42,8 @@ class OpenSkyAuthError(Exception):
 
 class OpenSkyClient:
     """Minimal OpenSky Network REST client: OAuth2 client-credentials auth +
-    the bounding-box `states/all` endpoint. Blocking (uses `requests`), same
-    as the FlightRadarAPI calls elsewhere in this integration - callers are
-    expected to run it via hass.async_add_executor_job.
+    the bounding-box `states/all` endpoint. Blocking (uses `requests`), so
+    callers are expected to run it via hass.async_add_executor_job.
     """
 
     def __init__(self, client_id: str, client_secret: str) -> None:
@@ -96,8 +95,7 @@ class OpenSkyClient:
 
         Raises on any transport/auth/HTTP failure rather than swallowing it -
         the caller (FlightProcessor.update_flights_in_area) is what decides
-        whether a failure should fall back to cached data, same contract as
-        the FlightRadar24 calls it replaces.
+        whether a failure should fall back to cached data.
         """
         token = self._ensure_token()
         response = self._session.get(

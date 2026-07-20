@@ -20,7 +20,7 @@ from .api.helper import Point
 from logging import Logger
 
 
-class FlightRadar24Coordinator(DataUpdateCoordinator[int]):
+class NearbyFlightsCoordinator(DataUpdateCoordinator[int]):
 
     def __init__(
             self,
@@ -43,10 +43,7 @@ class FlightRadar24Coordinator(DataUpdateCoordinator[int]):
         )
         self.scanning: bool = True
 
-        # Bookkeeping for the "area feed stale" HA Repair, hand-patched in on
-        # top of upstream (custom_components/flightradar24 is HACS-managed;
-        # a future HACS update to this integration could silently revert
-        # this block, same caveat as other hand patches in this fork).
+        # Bookkeeping for the "area feed stale" HA Repair.
         # See FlightProcessor.area_stale (api/flight.py) for the underlying
         # signal: it goes True while we're serving cached area/"zones" data
         # because the OpenSky request failed or came back empty and is

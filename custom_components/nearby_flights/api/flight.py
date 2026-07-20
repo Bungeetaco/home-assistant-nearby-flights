@@ -11,9 +11,9 @@ from .adsbdb import AdsbdbClient
 
 _LOGGER = logging.getLogger(__name__)
 
-# FlightRadar24's area/"zones" listing endpoint used to have its own soft-block behavior:
-# instead of an HTTP error, a blocked request got a valid 200 response with an empty
-# flight list, indistinguishable from a genuine "no traffic in the area right now"
+# The old backend's area/"zones" listing endpoint used to have its own soft-block
+# behavior: instead of an HTTP error, a blocked request got a valid 200 response with an
+# empty flight list, indistinguishable from a genuine "no traffic in the area right now"
 # response. The OpenSky backend below can fail the same way in spirit (a request error,
 # or a rate-limited/empty response), so this grace window is kept as generic protection:
 # keep serving the last known-good area list for up to this many seconds since it was
@@ -140,14 +140,14 @@ class FlightProcessor:
         self._exited = []
 
     def set_in_area(self, in_area: dict[str, dict[str, Any]]) -> None:
-        # Called only from sensor.py's FlightRadar24RestoreSensor at HA startup, to
+        # Called only from sensor.py's NearbyFlightsRestoreSensor at HA startup, to
         # close a DIFFERENT gap than AREA_STALE_GRACE_S normally covers.
         # AREA_STALE_GRACE_S protects an already-warm self._in_area from a transient
         # soft block; a cold start has nothing to protect at all (self._in_area starts
         # empty, self._last_nonempty_monotonic starts None), so the very first
         # post-restart poll -- if it happens to be soft-blocked -- wipes straight to
         # empty with zero grace window. Confirmed live: after an HA restart,
-        # sensor.flightradar24_current_in_area came back empty with stale=false and
+        # sensor.nearby_flights_current_in_area came back empty with stale=false and
         # STAYED that way for several minutes with a real flight independently confirmed
         # present. Restoring the last known flight list from the entity's recorded state
         # AND stamping _last_nonempty_monotonic as "now" gives that first post-restart
@@ -260,9 +260,9 @@ class FlightProcessor:
             'aircraft_model': aircraft.get('type'),
             'aircraft_code': aircraft.get('icao_type'),
             'airline': airline.get('name'),
-            # adsbdb has no distinct "short name" field the way FR24 did - its 'name'
-            # field is already short enough for the ticker ("Air Canada", "Porter
-            # Airlines"), and the ticker card displays airline_short, not airline.
+            # adsbdb has no distinct "short name" field the way the old backend did -
+            # its 'name' field is already short enough for the ticker ("Air Canada",
+            # "Porter Airlines"), and the ticker card displays airline_short, not airline.
             'airline_short': airline.get('name'),
             'airline_iata': airline.get('iata'),
             'airline_icao': airline.get('icao'),
