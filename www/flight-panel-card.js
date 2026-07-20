@@ -1037,6 +1037,20 @@ class FlightPanelCard extends HTMLElement {
     return `${sign}${h}h ${m}m`;
   }
 
+  // Minutes-only under an hour ("23m"), "Xh Ym" at 60+ minutes. Deliberately different
+  // from _fmtDuration above (always "Xh Ym", even "0h 5m") - that reads fine for an
+  // elapsed "flown" duration, but an ETA under an hour showing "0h 23m" instead of just
+  // "23m" is needlessly noisy for the common case (most in-area flights are well under
+  // an hour out).
+  _fmtEtaDuration(seconds) {
+    if (seconds == null || isNaN(seconds)) return null;
+    const totalMinutes = Math.round(Math.abs(seconds) / 60);
+    if (totalMinutes < 60) return `${totalMinutes}m`;
+    const h = Math.floor(totalMinutes / 60);
+    const m = totalMinutes % 60;
+    return `${h}h ${m}m`;
+  }
+
   // Great-circle distance in km (same haversine formula the backend uses in
   // api/helper.py) - kept as a small local copy since this needs to run client-side
   // against live position + destination-airport coordinates already sitting in the
@@ -1167,7 +1181,7 @@ class FlightPanelCard extends HTMLElement {
         let eta = null;
         if (arr) {
           const diff = arr - now;
-          eta = diff <= 0 ? "Landing" : `${this._fmtDuration(diff)} to go`;
+          eta = diff <= 0 ? "Landing" : `${this._fmtEtaDuration(diff)} to go`;
         }
 
         // adsbdb (the backend's route-enrichment source) has no live timing data, so
@@ -1181,7 +1195,11 @@ class FlightPanelCard extends HTMLElement {
         // estimate.
         const etaMinutes = this._estimateEtaMinutes(f);
         const positionEta =
-          etaMinutes == null ? null : etaMinutes < 1 ? "Landing" : `~${Math.round(etaMinutes)}m to go`;
+          etaMinutes == null
+            ? null
+            : etaMinutes < 1
+            ? "Landing"
+            : `~${this._fmtEtaDuration(etaMinutes * 60)} to go`;
         const displayEta = eta || positionEta;
 
         const phaseIcons = { Departing: "🛫", Landing: "🛬", "On Ground": "🛬" };
