@@ -212,7 +212,7 @@ class FlightPanelCard extends HTMLElement {
     const maxRadiusKm = this._config.max_radius_km ?? 250;
     const title = this._config.title === "" ? "" : this._config.title || "✈️ Flights Overhead";
     this.innerHTML = `
-      <ha-card>
+      <ha-card class="fp-enter">
         <div class="fp-header">
           <div class="fp-heading-block">
             ${title ? `<div class="fp-title">${title}</div>` : ""}
@@ -476,6 +476,17 @@ class FlightPanelCard extends HTMLElement {
             padding-left: 0;
             padding-top: 12px;
           }
+        }
+        /* Entrance animation lives here (not card_mod) because this card renders in
+           light DOM — a card_mod :host rule can't match it, and a bare ha-card rule
+           would leak to every other ha-card in the same shadow tree. The 0.25s delay
+           matches the dashboard-wide card_mod entrance stagger for this section. */
+        .fp-enter { animation: fp-card-enter 0.55s cubic-bezier(0.22, 0.61, 0.36, 1) 0.25s backwards; }
+        @keyframes fp-card-enter { from { opacity: 0; transform: translateY(14px); } }
+        .fp-row-appear { animation: fp-row-in 0.5s ease-out backwards; }
+        @keyframes fp-row-in { from { opacity: 0; transform: translateX(10px); } }
+        @media (prefers-reduced-motion: reduce) {
+          .fp-enter, .fp-row-appear { animation: none; }
         }
         .fp-row-link {
           display: block;
@@ -1136,6 +1147,7 @@ class FlightPanelCard extends HTMLElement {
     this._updateSubtitle();
 
     if (!inRange.length) {
+      this._seenTickerKeys = new Set();
       this._tickerEl.innerHTML = `<div class="fp-empty">No flights currently in range.</div>`;
       return;
     }
@@ -1160,6 +1172,13 @@ class FlightPanelCard extends HTMLElement {
     const showIcons = this._config.show_ticker_icons ?? true;
     const enableLinks = this._config.enable_map_links ?? true;
     const u = this._tickerUnits();
+
+    // Every render rebuilds all row DOM from scratch via innerHTML, so a bare CSS
+    // animation on .fp-row would replay on every poll/radius tweak. Gate the fade-in
+    // on flights not present in the previous render instead; the first render after
+    // page load animates nothing (the whole card's entrance animation covers it).
+    const prevKeys = this._seenTickerKeys || null;
+    const shownKeys = new Set();
 
     const rowsHtml = limited
       .map((f) => {
@@ -1211,6 +1230,17 @@ class FlightPanelCard extends HTMLElement {
         };
         const phase = !dep && !arr && f.status && f.status !== "Cruising" ? f.status : null;
 
+        // Backend switched to OpenSky+adsbdb (2026-07-19) — f.id is now the aircraft's
+        // icao24 hex (a stable per-airframe address), not the old backend's own
+        // rotating per-flight id, so its old {slug}/{id}-style web permalink format no
+        // longer resolves to anything real. ADS-B Exchange's globe view takes an
+        // icao24 directly and needs no callsign/slug, so it's a straightforward swap
+        // rather than a lost feature.
+        const icao24 = f.aircraft_icao_24bit || f.id;
+        const rowKey = icao24 || callsign;
+        shownKeys.add(rowKey);
+        const appear = prevKeys && !prevKeys.has(rowKey) ? " fp-row-appear" : "";
+
         const rowInner = `
             <div class="fp-line1">
               <span class="fp-callsign">${callsign}${airline ? ` · ${airline}` : ""}</span>
@@ -1226,22 +1256,16 @@ class FlightPanelCard extends HTMLElement {
             </div>
         `;
 
-        // Backend switched to OpenSky+adsbdb (2026-07-19) — f.id is now the aircraft's
-        // icao24 hex (a stable per-airframe address), not the old backend's own
-        // rotating per-flight id, so its old {slug}/{id}-style web permalink format no
-        // longer resolves to anything real. ADS-B Exchange's globe view takes an
-        // icao24 directly and needs no callsign/slug, so it's a straightforward swap
-        // rather than a lost feature.
-        const icao24 = f.aircraft_icao_24bit || f.id;
         if (enableLinks && icao24) {
           const url = `https://globe.adsbexchange.com/?icao=${encodeURIComponent(icao24)}`;
           return `<a class="fp-row-link" href="${url}" target="_blank" rel="noopener noreferrer">
-            <div class="fp-row">${rowInner}</div>
+            <div class="fp-row${appear}">${rowInner}</div>
           </a>`;
         }
-        return `<div class="fp-row">${rowInner}</div>`;
+        return `<div class="fp-row${appear}">${rowInner}</div>`;
       })
       .join("");
+    this._seenTickerKeys = shownKeys;
 
     const footerHtml =
       maxRows && sorted.length > maxRows
