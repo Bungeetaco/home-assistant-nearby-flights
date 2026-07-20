@@ -2,15 +2,17 @@
 
 A Home Assistant custom integration that reports aircraft currently flying near a
 configured location. Originally forked from
-[AlexandrErohin/home-assistant-flightradar24](https://github.com/AlexandrErohin/home-assistant-flightradar24);
-as of v2.0.0 this fork no longer depends on FlightRadar24 at all.
+[AlexandrErohin/home-assistant-flightradar24](https://github.com/AlexandrErohin/home-assistant-flightradar24)
+(this repo carries that project's original commit history); as of v2.0.0 it no longer
+depends on FlightRadar24 at all, and as of 2026-07-20 it's a standalone project rather
+than a GitHub fork of that repo — see "Project history" below.
 
-## Why this fork exists
+## Why this project exists
 
 FlightRadar24's public web API silently soft-blocks scraping-style traffic: instead of
 an error, it returns a valid HTTP 200 with an empty flight list, making it impossible to
 distinguish "blocked" from "genuinely no traffic right now." This happened repeatedly on
-a live install. This fork replaces FlightRadar24 entirely with:
+a live install. This project replaces FlightRadar24 entirely with:
 
 - **[OpenSky Network](https://opensky-network.org/)** — live aircraft positions
   (state vectors) via its `states/all` bounding-box API. Free registered accounts get
@@ -70,6 +72,17 @@ Integration → Nearby Flights**). You'll need:
 | `nearby_flights_exit` | Flight exited your area |
 | `nearby_flights_area_landed` | Aircraft landed nearby |
 | `nearby_flights_area_took_off` | Aircraft took off nearby |
+
+## Project history
+
+This started as a GitHub fork of
+[AlexandrErohin/home-assistant-flightradar24](https://github.com/AlexandrErohin/home-assistant-flightradar24)
+and diverged heavily as FlightRadar24 was progressively replaced with OpenSky+adsbdb and
+then removed entirely — by v2.0.0 nothing in this repo talks to FlightRadar24 anymore, so
+it no longer made sense to keep it linked as a GitHub fork of an integration it isn't
+related to anymore. As of 2026-07-20 it's a standalone repository (full original commit
+history preserved, GitHub's fork/parent relationship dropped). Full credit to
+AlexandrErohin's original project for the foundation this was built on.
 
 ## Notes
 
