@@ -8,6 +8,12 @@ from .helper import (
 from .event import EventManager
 from .opensky import OpenSkyClient
 from .adsbdb import AdsbdbClient
+from ..const import (
+    EVENT_ENTRY,
+    EVENT_EXIT,
+    EVENT_AREA_LANDED,
+    EVENT_AREA_TOOK_OFF,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -21,12 +27,6 @@ _LOGGER = logging.getLogger(__name__)
 # can show it's serving cached data); past this window, trust an empty result as real --
 # otherwise a genuine, prolonged lull would show stale flights forever.
 AREA_STALE_GRACE_S = 600.0
-from ..const import (
-    EVENT_ENTRY,
-    EVENT_EXIT,
-    EVENT_AREA_LANDED,
-    EVENT_AREA_TOOK_OFF,
-)
 
 
 def is_helicopter(flight) -> bool:
