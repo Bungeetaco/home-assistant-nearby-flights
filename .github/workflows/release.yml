@@ -1,9 +1,9 @@
 name: "Release"
 
 on:
-  release:
-    types:
-      - "published"
+  push:
+    tags:
+      - "v*"
 
 permissions: {}
 
@@ -15,21 +15,23 @@ jobs:
       contents: write
     steps:
       - name: "Checkout the repository"
-        uses: "actions/checkout@v4"
+        uses: "actions/checkout@v7"
 
       - name: "Adjust version number"
         shell: "bash"
         run: |
-          yq -i -o json '.version="${{ github.event.release.tag_name }}"' \
-            "${{ github.workspace }}/custom_components/nearby_flights/manifest.json"
+          version="${GITHUB_REF_NAME#v}"
+          yq -i -o json ".version=\"${version}\"" \
+            "${GITHUB_WORKSPACE}/custom_components/nearby_flights/manifest.json"
 
       - name: "ZIP the integration directory"
         shell: "bash"
         run: |
-          cd "${{ github.workspace }}/custom_components/nearby_flights"
+          cd "${GITHUB_WORKSPACE}/custom_components/nearby_flights"
           zip nearby_flights.zip -r ./
 
-      - name: "Upload the ZIP file to the release"
-        uses: softprops/action-gh-release@v2
+      - name: "Create the release and upload the ZIP file"
+        uses: softprops/action-gh-release@v3
         with:
           files: ${{ github.workspace }}/custom_components/nearby_flights/nearby_flights.zip
+          generate_release_notes: true
