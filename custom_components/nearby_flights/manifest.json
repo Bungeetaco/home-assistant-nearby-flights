@@ -1,6 +1,6 @@
 {
   "domain": "nearby_flights",
-  "name": "Nearby Flights (OpenSky/adsbdb, formerly FlightRadar24 fork)",
+  "name": "Nearby Flights",
   "codeowners": [
     "@AlexandrErohin",
     "@Bungeetaco"
