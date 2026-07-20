@@ -6,9 +6,9 @@
     "@Bungeetaco"
   ],
   "config_flow": true,
-  "documentation": "https://github.com/Bungeetaco/nearby-flights-dashboard-fork",
+  "documentation": "https://github.com/Bungeetaco/home-assistant-nearby-flights",
   "iot_class": "cloud_polling",
-  "issue_tracker": "https://github.com/Bungeetaco/nearby-flights-dashboard-fork/issues",
+  "issue_tracker": "https://github.com/Bungeetaco/home-assistant-nearby-flights/issues",
   "requirements": [
     "requests>=2.28.0"
   ],

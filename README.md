@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="custom_components/nearby_flights/brand/icon@2x.png" width="96" height="96" alt="Nearby Flights icon">
+</p>
+
 # Nearby Flights for Home Assistant
 
 A Home Assistant custom integration that reports aircraft currently flying near a
@@ -72,6 +76,49 @@ Integration → Nearby Flights**). You'll need:
 | `nearby_flights_exit` | Flight exited your area |
 | `nearby_flights_area_landed` | Aircraft landed nearby |
 | `nearby_flights_area_took_off` | Aircraft took off nearby |
+
+## Dashboard card
+
+`www/flight-panel-card.js` is a custom Lovelace card (radar map + scrolling ticker list)
+purpose-built for this integration's `sensor.nearby_flights_current_in_area` entity — not
+required to use the integration, but the intended way to actually see the data on a
+dashboard.
+
+It mounts `www/home-assistant-flightradar24-card-square.js` as a child element for the
+radar map pane. **That file is a hand-patched fork of
+[Springvar/home-assistant-flightradar24-card](https://github.com/Springvar/home-assistant-flightradar24-card)**
+— full credit to Springvar for the original map/radar rendering it's built on; the patches
+here are limited to renaming its custom element (`flightradar24-card` →
+`nearby-flights-map-card`, so it no longer collides with anything FlightRadar24-branded)
+and a CSS fix to make the radar map square instead of circular.
+`www/home-assistant-flightradar24-card.js` is Springvar's original, unpatched file, kept
+only as a reference baseline for diffing against upstream.
+
+### Installing the card
+
+HACS's "plugin"/dashboard category needs a repo-name/filename match that doesn't apply
+here, so install manually rather than via HACS:
+
+1. Create `<config>/www/community/nearby-flights-card/` and copy both `flight-panel-card.js`
+   and `home-assistant-flightradar24-card-square.js` into it (skip the third, unpatched
+   file — it's a reference copy, not meant to be loaded).
+2. Register both as Lovelace resources (**Settings → Dashboards → ⋮ → Resources → Add
+   Resource**, type **JavaScript Module**):
+   - `/local/community/nearby-flights-card/flight-panel-card.js`
+   - `/local/community/nearby-flights-card/home-assistant-flightradar24-card-square.js`
+3. Add the card to a dashboard:
+
+   ```yaml
+   type: custom:flight-panel-card
+   entity: sensor.nearby_flights_current_in_area
+   radius_km: 100   # tune to your actual distance from the nearest airport(s)
+   aspect_ratio: 2
+   map_radar_size: 100
+   ```
+
+   Full list of optional config keys (units, ticker row limits, sort order, backend
+   radius auto-grow, polling backoff, etc.) is documented in the comment header at the
+   top of `flight-panel-card.js`.
 
 ## Project history
 
