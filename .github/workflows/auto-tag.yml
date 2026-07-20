@@ -1,0 +1,47 @@
+name: "Auto-tag release"
+
+# Only fires when a push to main actually touches the integration or the
+# dashboard cards -- README/AGENT_SETUP/workflow-only changes don't cut a
+# release. The tag push this creates is what triggers release.yml (which
+# builds nearby_flights.zip and publishes the GitHub release).
+on:
+  push:
+    branches:
+      - "main"
+    paths:
+      - "custom_components/**"
+      - "www/**"
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Checkout"
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: "Skip if this commit is already tagged"
+        id: check
+        run: |
+          existing="$(git tag --points-at HEAD)"
+          if [ -n "$existing" ]; then
+            echo "already=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "already=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: "Compute next patch version and tag"
+        if: steps.check.outputs.already == 'false'
+        run: |
+          last_tag="$(git tag -l 'v*' --sort=-v:refname | head -n1)"
+          last_tag="${last_tag:-v0.0.0}"
+          ver="${last_tag#v}"
+          IFS=. read -r major minor patch <<< "$ver"
+          next="v${major}.${minor}.$((patch + 1))"
+          echo "Tagging ${next} (previous: ${last_tag})"
+          git tag "$next"
+          git push origin "$next"
