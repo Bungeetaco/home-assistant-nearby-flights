@@ -5,18 +5,18 @@
 # Nearby Flights for Home Assistant
 
 A Home Assistant custom integration that reports aircraft currently flying near a
-configured location. Originally forked from
+configured location. I originally forked this from
 [AlexandrErohin/home-assistant-flightradar24](https://github.com/AlexandrErohin/home-assistant-flightradar24)
-(this repo carries that project's original commit history); as of v2.0.0 it no longer
-depends on FlightRadar24 at all, and as of 2026-07-20 it's a standalone project rather
-than a GitHub fork of that repo — see "Project history" below.
+(this repo still carries that project's original commit history); as of v2.0.0 it no
+longer depends on FlightRadar24 at all, and as of 2026-07-20 I've made it a standalone
+project rather than a GitHub fork of that repo — see "Project history" below.
 
-## Why this project exists
+## Why I built this
 
 FlightRadar24's public web API silently soft-blocks scraping-style traffic: instead of
-an error, it returns a valid HTTP 200 with an empty flight list, making it impossible to
-distinguish "blocked" from "genuinely no traffic right now." This happened repeatedly on
-a live install. This project replaces FlightRadar24 entirely with:
+an error, it returns a valid HTTP 200 with an empty flight list, so I couldn't tell
+"blocked" apart from "genuinely no traffic right now." That happened to me repeatedly on
+my live install, so I replaced FlightRadar24 entirely with:
 
 - **[OpenSky Network](https://opensky-network.org/)** — live aircraft positions
   (state vectors) via its `states/all` bounding-box API. Free registered accounts get
@@ -25,11 +25,16 @@ a live install. This project replaces FlightRadar24 entirely with:
   airline) and aircraft-type/registration lookups by callsign/ICAO24, used to enrich the
   raw OpenSky position data.
 
-Because of this, the following FlightRadar24-only features (which had no OpenSky/adsbdb
-equivalent, and were unused dead weight even before removal) are gone as of v2.0.0: Most
-Tracked flights, airport arrivals/departures schedule & delay stats, and tracking
-individual flights/aircraft by registration or flight number (which also removed the
-`device_tracker` platform and the add/remove-track text entities).
+As part of that switch, I dropped the FlightRadar24-only features that had no
+OpenSky/adsbdb equivalent — Most Tracked flights, airport arrivals/departures schedule &
+delay stats, and tracking individual flights/aircraft by registration or flight number
+(which also removed the `device_tracker` platform and the add/remove-track text
+entities). They're gone as of v2.0.0. I want to be clear that I'm not dropping them
+because they're bad features — they just weren't part of how I use this integration, and
+I had no free-tier data source left to back them once FlightRadar24 was out of the
+picture. If you relied on any of that, the original
+[AlexandrErohin/home-assistant-flightradar24](https://github.com/AlexandrErohin/home-assistant-flightradar24)
+still has it.
 
 ## Installation
 
@@ -80,15 +85,15 @@ Integration → Nearby Flights**). You'll need:
 ## Dashboard card
 
 `www/flight-panel-card.js` is a custom Lovelace card (radar map + scrolling ticker list)
-purpose-built for this integration's `sensor.nearby_flights_current_in_area` entity — not
-required to use the integration, but the intended way to actually see the data on a
+I built for this integration's `sensor.nearby_flights_current_in_area` entity — not
+required to use the integration, but it's how I actually look at the data on my own
 dashboard.
 
 It mounts `www/home-assistant-flightradar24-card-square.js` as a child element for the
 radar map pane. **That file is a hand-patched fork of
 [Springvar/home-assistant-flightradar24-card](https://github.com/Springvar/home-assistant-flightradar24-card)**
-— full credit to Springvar for the original map/radar rendering it's built on; the patches
-here are limited to renaming its custom element (`flightradar24-card` →
+— full credit to Springvar for the original map/radar rendering it's built on; my patches
+are limited to renaming its custom element (`flightradar24-card` →
 `nearby-flights-map-card`, so it no longer collides with anything FlightRadar24-branded)
 and a CSS fix to make the radar map square instead of circular.
 `www/home-assistant-flightradar24-card.js` is Springvar's original, unpatched file, kept
@@ -124,12 +129,12 @@ here, so install manually rather than via HACS:
 
 This started as a GitHub fork of
 [AlexandrErohin/home-assistant-flightradar24](https://github.com/AlexandrErohin/home-assistant-flightradar24)
-and diverged heavily as FlightRadar24 was progressively replaced with OpenSky+adsbdb and
-then removed entirely — by v2.0.0 nothing in this repo talks to FlightRadar24 anymore, so
-it no longer made sense to keep it linked as a GitHub fork of an integration it isn't
+and diverged heavily as I progressively replaced FlightRadar24 with OpenSky+adsbdb and
+then removed it entirely — by v2.0.0 nothing in this repo talks to FlightRadar24 anymore,
+so it no longer made sense to keep it linked as a GitHub fork of an integration it isn't
 related to anymore. As of 2026-07-20 it's a standalone repository (full original commit
 history preserved, GitHub's fork/parent relationship dropped). Full credit to
-AlexandrErohin's original project for the foundation this was built on.
+AlexandrErohin's original project for the foundation I built this on.
 
 ## Notes
 
