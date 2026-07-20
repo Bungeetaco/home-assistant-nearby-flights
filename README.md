@@ -63,7 +63,7 @@ Integration → Nearby Flights**). You'll need:
 
 | Entity | Description |
 |---|---|
-| `sensor.nearby_flights_current_in_area` | Number of aircraft currently in the configured area; `flights` attribute holds the full enriched list (position, altitude, speed, route, airline, aircraft type, and a derived `status` of `Departing`/`Landing`/`Cruising`/`On Ground`) |
+| `sensor.nearby_flights_current_in_area` | Number of aircraft currently in the configured area; `flights` attribute holds the full enriched list (position, altitude, speed, route, airline, aircraft type, and a derived `status` of `Departing`/`Landing`/`Climbing`/`Descending`/`Cruising`/`On Ground`) |
 | `sensor.nearby_flights_entered_area` | Aircraft that entered the area since the last update |
 | `sensor.nearby_flights_exited_area` | Aircraft that exited the area since the last update |
 | `switch.nearby_flights_api_data_fetching` | Turn polling on/off |
@@ -140,6 +140,8 @@ AlexandrErohin's original project for the foundation this was built on.
   past 20 minutes, a Home Assistant Repair issue is raised.
 - `adsbdb` has no live schedule/timing data (only static route info), so
   `time_scheduled_departure`/`time_estimated_arrival`/etc. attributes are always `None`.
-  The derived `status` field (`Departing`/`Landing`/`Cruising`/`On Ground`, from
-  on-ground state + vertical rate) is the intended replacement for phase-of-flight
-  display.
+  The derived `status` field is the intended replacement for phase-of-flight display -
+  `Departing`/`Landing` when a climb/descent is near the ground (below 10,000ft) or
+  close to the resolved origin/destination airport, `Climbing`/`Descending` for the
+  same vertical motion elsewhere (a mid-route altitude change isn't a takeoff or
+  landing), `Cruising` for level flight, `On Ground` when parked/taxiing.

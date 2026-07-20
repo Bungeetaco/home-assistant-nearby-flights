@@ -1202,7 +1202,13 @@ class FlightPanelCard extends HTMLElement {
             : `~${this._fmtEtaDuration(etaMinutes * 60)} to go`;
         const displayEta = eta || positionEta;
 
-        const phaseIcons = { Departing: "🛫", Landing: "🛬", "On Ground": "🛬" };
+        const phaseIcons = {
+          Departing: "🛫",
+          Landing: "🛬",
+          "On Ground": "🛬",
+          Climbing: "🔼",
+          Descending: "🔽",
+        };
         const phase = !dep && !arr && f.status && f.status !== "Cruising" ? f.status : null;
 
         const rowInner = `

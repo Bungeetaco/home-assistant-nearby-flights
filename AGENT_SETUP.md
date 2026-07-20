@@ -135,8 +135,9 @@ detected correctly.
 
 - `sensor.nearby_flights_current_in_area` has attribute `flights` as a
   non-empty list (once real air traffic is in range) and `stale: false`,
-  with `status` (`Departing`/`Landing`/`Cruising`/`On Ground`) and `~Xm to go`
-  ETA (when a destination airport was resolved) populated per flight.
+  with `status` (`Departing`/`Landing`/`Climbing`/`Descending`/`Cruising`/`On Ground`)
+  and `~Xm to go`/`~Xh Ym to go` ETA (when a destination airport was resolved)
+  populated per flight.
 - The dashboard card renders a radar-style map plus a scrolling ticker list,
   not a red error box and not a "No flights currently in range" placeholder
   that never changes. (An occasional empty state is normal if there's

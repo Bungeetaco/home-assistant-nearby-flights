@@ -68,23 +68,68 @@ def to_int(element: Any) -> None | int:
 
 PHASE_VERTICAL_SPEED_THRESHOLD_FPM = 300.0
 
+# Below this altitude, a climb/descent is airport-ops phase (departure/arrival) almost
+# by definition - matches the real "sterile cockpit"/below-10,000ft aviation convention,
+# not an arbitrary number.
+PHASE_LOW_ALTITUDE_FT = 10_000.0
 
-def flight_phase(on_ground: bool | None, vertical_speed_fpm: float | None) -> str | None:
-    """Coarse phase-of-flight label from data the backend provides
-    (on_ground + vertical rate), rather than schedule/estimated times -
-    adsbdb has no live timing data, so time_scheduled_departure/
-    time_estimated_arrival/etc. can never be populated the way the ticker
-    card's dep/arr display used to expect from the old backend. +-300fpm is
-    comfortably above the noise floor of a
-    level cruise (which drifts a little from barometric/wind effects)
-    without being so high it misses a real gentle climb or descent.
+# Above PHASE_LOW_ALTITUDE_FT, still treat a climb/descent as Departing/Landing if it's
+# within this distance of the resolved origin/destination airport - catches aircraft
+# with a high initial climb rate still above 10k ft near the origin, or a long final
+# descent that's begun but hasn't dropped below 10k ft yet near the destination.
+# Deliberately tighter than typical top-of-descent distance (100-150nm+ for many
+# routes) so a flight merely overflying an airport mid-cruise doesn't get mislabeled.
+PHASE_NEAR_AIRPORT_KM = 80.0
+
+
+def flight_phase(
+    on_ground: bool | None,
+    vertical_speed_fpm: float | None,
+    altitude_ft: float | None = None,
+    distance_to_origin_km: float | None = None,
+    distance_to_destination_km: float | None = None,
+) -> str | None:
+    """Phase-of-flight label using every signal available for it, not just vertical
+    rate. on_ground and vertical_speed_fpm are always present (straight from
+    OpenSky); altitude_ft is also always present. distance_to_origin_km/
+    distance_to_destination_km are only present when adsbdb resolved a route for
+    this callsign - not guaranteed, since adsbdb coverage is incomplete.
+
+    Vertical rate alone can't tell a genuine takeoff/landing apart from a mid-route
+    altitude change (an ATC-assigned step climb to a new cruise level, or an early
+    descent for weather/traffic/spacing, both common well before top-of-descent) -
+    a flight thousands of km from either airport, still climbing after leveling off
+    from one step, doesn't belong labeled "Departing". Altitude and proximity to the
+    relevant airport are used as corroborating evidence: low altitude (below the
+    real aviation ~10,000ft threshold) is airport-ops phase almost by definition;
+    above that, being close to the resolved origin/destination is the next-best
+    signal. Failing both, a climb/descent this coarse can only honestly be reported
+    as Climbing/Descending, not Departing/Landing - adsbdb has no live timing data
+    (see the dep/arr comments in flight.py) so there's no schedule to fall back on
+    to disambiguate either.
+
+    +-300fpm is comfortably above the noise floor of a level cruise (which drifts a
+    little from barometric/wind effects) without being so high it misses a real
+    gentle climb or descent.
     """
     if on_ground:
         return "On Ground"
     if vertical_speed_fpm is None:
         return None
+
+    low_altitude = altitude_ft is not None and altitude_ft < PHASE_LOW_ALTITUDE_FT
+
     if vertical_speed_fpm >= PHASE_VERTICAL_SPEED_THRESHOLD_FPM:
-        return "Departing"
+        near_origin = (
+            distance_to_origin_km is not None and distance_to_origin_km <= PHASE_NEAR_AIRPORT_KM
+        )
+        return "Departing" if (low_altitude or near_origin) else "Climbing"
+
     if vertical_speed_fpm <= -PHASE_VERTICAL_SPEED_THRESHOLD_FPM:
-        return "Landing"
+        near_destination = (
+            distance_to_destination_km is not None
+            and distance_to_destination_km <= PHASE_NEAR_AIRPORT_KM
+        )
+        return "Landing" if (low_altitude or near_destination) else "Descending"
+
     return "Cruising"

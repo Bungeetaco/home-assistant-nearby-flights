@@ -249,6 +249,23 @@ class FlightProcessor:
             self._point.latitude, self._point.longitude, state["latitude"], state["longitude"]
         )
 
+        # Distance from the aircraft's current position to its resolved origin/
+        # destination airport (None if adsbdb didn't resolve one) - used by
+        # flight_phase() below to tell a genuine takeoff/landing apart from a
+        # mid-route altitude change.
+        origin_lat, origin_lon = origin.get('latitude'), origin.get('longitude')
+        distance_to_origin_km = (
+            haversine_km(state["latitude"], state["longitude"], origin_lat, origin_lon)
+            if origin_lat is not None and origin_lon is not None
+            else None
+        )
+        dest_lat, dest_lon = destination.get('latitude'), destination.get('longitude')
+        distance_to_destination_km = (
+            haversine_km(state["latitude"], state["longitude"], dest_lat, dest_lon)
+            if dest_lat is not None and dest_lon is not None
+            else None
+        )
+
         flight: dict[str, Any] = {
             'id': icao24,
             'flight_number': None,
@@ -309,10 +326,20 @@ class FlightProcessor:
             ),
             'on_ground': state["on_ground"],
             # adsbdb has no live timing data (only static route info), so the
-            # time_* fields above are always None. Derive a coarse phase from data
-            # OpenSky does give us (on_ground + vertical rate) so the ticker still
-            # conveys takeoff/landing instead of going silent for every flight.
-            'status': flight_phase(state["on_ground"], mps_to_fpm(state["vertical_rate_mps"])),
+            # time_* fields above are always None. Derive a coarse phase from every
+            # signal actually available instead (on_ground, vertical rate, altitude,
+            # and - when adsbdb resolved a route - distance to the origin/
+            # destination airport) so the ticker still conveys takeoff/landing
+            # instead of going silent for every flight, and doesn't mislabel a
+            # mid-route altitude change as a takeoff/landing. See flight_phase()
+            # in api/helper.py for the full reasoning.
+            'status': flight_phase(
+                state["on_ground"],
+                mps_to_fpm(state["vertical_rate_mps"]),
+                altitude_ft,
+                distance_to_origin_km,
+                distance_to_destination_km,
+            ),
         }
         flight['aircraft_category'] = "Helicopter" if is_helicopter(flight) else "Airplane"
         self._takeoff_and_landing(flight, last_position, state["on_ground"])
