@@ -103,6 +103,13 @@
 //                          one, is always respected exactly as given and never silently
 //                          reinterpreted as uncapped). 12 rows was picked as a reasonable
 //                          fit for a ticker pane sharing space with the map on a 4K TV.
+//                          Set to the string "auto" instead of a number to size the row
+//                          count to the ticker pane's actual rendered height (measured via
+//                          ResizeObserver, using the real height of a rendered row) --
+//                          useful when the same card config is reused across very
+//                          differently sized dashboard sections (e.g. a 4K wall display
+//                          vs. a phone), since a fixed number either wastes space or
+//                          overflows depending on the pane's actual height.
 //   sort_by                flight field the ticker sorts by (default "distance")
 //   sort_desc              sort descending instead of ascending (default false)
 //   units                  { altitude: "ft"|"m", speed: "kt"|"kmh"|"mph", distance: "km"|"mi" }
@@ -152,6 +159,19 @@ const ERROR_STREAK_THRESHOLD = 2;
 // max_ticker_rows doc comment above) -- picked as a reasonable fit for a ticker pane
 // that shares space with the map on a 4K TV dashboard section.
 const DEFAULT_MAX_TICKER_ROWS = 12;
+
+// Bootstrap guess for a single ticker row's rendered height (including its
+// margin-bottom), used only for the very first "auto" render before any real row has
+// been measured. Based on a typical two-line row (.fp-line1 + .fp-line2) at the
+// default font-size/line-height/padding/border/margin in the CSS below. Replaced by an
+// actual measurement (see _updateAutoTickerRowHeight) as soon as one row exists, so
+// this only affects layout for a single frame.
+const AUTO_TICKER_ROW_ESTIMATE_PX = 62;
+
+// Reserved space at the bottom of the ticker pane for the "Showing X of Y flights"
+// footer, so an "auto" row count doesn't compute a count that leaves the footer
+// clipped/scrolled when the flight list is longer than what fits.
+const AUTO_TICKER_FOOTER_RESERVE_PX = 22;
 
 const UNIT_CONVERTERS = {
   altitude: {
@@ -549,6 +569,14 @@ class FlightPanelCard extends HTMLElement {
     `;
     this._mapPaneEl = this.querySelector("#fp-map");
     this._tickerEl = this.querySelector("#fp-ticker");
+    // setConfig (and therefore _buildDom) can run more than once on the same card
+    // instance (e.g. live edits in the dashboard editor) -- disconnect any previous
+    // observer before creating a new one so they don't pile up watching a now-detached
+    // element.
+    if (this._tickerResizeObserver) this._tickerResizeObserver.disconnect();
+    this._tickerResizeObserver =
+      typeof ResizeObserver !== "undefined" ? new ResizeObserver(() => this._onTickerResize()) : null;
+    this._tickerResizeObserver?.observe(this._tickerEl);
     this._subtitleEl = this.querySelector("#fp-subtitle");
     const toggleEl = this.querySelector("#fp-autorefresh");
     if (toggleEl) {
@@ -861,6 +889,7 @@ class FlightPanelCard extends HTMLElement {
   disconnectedCallback() {
     if (this._subtitleTimer) clearInterval(this._subtitleTimer);
     clearTimeout(this._backendGrowDebounceTimer);
+    this._tickerResizeObserver?.disconnect();
     this._stopPolling();
     if (this._visibilityHandler) {
       document.removeEventListener("visibilitychange", this._visibilityHandler);
@@ -1166,8 +1195,13 @@ class FlightPanelCard extends HTMLElement {
     // behavior a couple lines below, unchanged from before this default was introduced).
     // Only the previously-undocumented "no cap at all" behavior for configs that never
     // mention max_ticker_rows changes here; anything that already sets the key keeps
-    // behaving exactly as it did.
-    const maxRows = this._config.max_ticker_rows ?? DEFAULT_MAX_TICKER_ROWS;
+    // behaving exactly as it did. "auto" is a third case: size to the pane's actual
+    // rendered height instead of a fixed number -- see _computeAutoTickerRows.
+    const configuredMax = this._config.max_ticker_rows;
+    const isAuto = configuredMax === "auto";
+    const maxRows = isAuto
+      ? this._lastAutoTickerRows ?? this._computeAutoTickerRows() ?? DEFAULT_MAX_TICKER_ROWS
+      : configuredMax ?? DEFAULT_MAX_TICKER_ROWS;
     const limited = maxRows ? sorted.slice(0, maxRows) : sorted;
     const showIcons = this._config.show_ticker_icons ?? true;
     const enableLinks = this._config.enable_map_links ?? true;
@@ -1272,6 +1306,58 @@ class FlightPanelCard extends HTMLElement {
         ? `<div class="fp-ticker-footer">Showing ${maxRows} of ${sorted.length} flights</div>`
         : "";
     this._tickerEl.innerHTML = rowsHtml + footerHtml;
+
+    if (isAuto) {
+      this._updateAutoTickerRowHeight();
+      const recomputed = this._computeAutoTickerRows();
+      if (recomputed != null && recomputed !== maxRows && recomputed !== this._lastAutoTickerRows) {
+        // One corrective re-render using the just-measured real row height (the first
+        // pass above only had AUTO_TICKER_ROW_ESTIMATE_PX or a stale measurement to go
+        // on). Setting _lastAutoTickerRows before recursing means the second pass takes
+        // the `??` short-circuit at the top of this function instead of recomputing
+        // again, so this always converges in at most two renders, never loops.
+        this._lastAutoTickerRows = recomputed;
+        this._renderTicker(flights);
+        return;
+      }
+      this._lastAutoTickerRows = maxRows;
+    }
+  }
+
+  // How many rows currently fit the ticker pane's actual rendered height, using the
+  // real measured row height once known (see _updateAutoTickerRowHeight) or a rough
+  // bootstrap estimate before any row has ever been measured. Only meaningful when
+  // max_ticker_rows: "auto" is configured.
+  _computeAutoTickerRows() {
+    if (!this._tickerEl) return null;
+    const availPx = this._tickerEl.clientHeight;
+    if (!availPx) return null;
+    const rowPx = this._measuredRowHeightPx || AUTO_TICKER_ROW_ESTIMATE_PX;
+    return Math.max(1, Math.floor((availPx - AUTO_TICKER_FOOTER_RESERVE_PX) / rowPx));
+  }
+
+  // Measures the first real .fp-row in the current render (height + margin-bottom) so
+  // later auto-row calculations use the pane's actual font/line-height/padding instead
+  // of the AUTO_TICKER_ROW_ESTIMATE_PX bootstrap guess.
+  _updateAutoTickerRowHeight() {
+    const rowEl = this._tickerEl?.querySelector(".fp-row");
+    if (!rowEl) return;
+    const marginBottom = parseFloat(getComputedStyle(rowEl).marginBottom) || 0;
+    this._measuredRowHeightPx = rowEl.getBoundingClientRect().height + marginBottom;
+  }
+
+  // Fired by the ResizeObserver set up in _buildDom whenever the ticker pane's own box
+  // size changes (card resized, dashboard column width changed, orientation change,
+  // etc.) -- re-renders with a freshly computed row count so the ticker actually grows
+  // or shrinks to fill a differently sized pane instead of staying fixed at whatever
+  // count first happened to fit.
+  _onTickerResize() {
+    if (this._config?.max_ticker_rows !== "auto" || !this._lastRawFlights) return;
+    const recomputed = this._computeAutoTickerRows();
+    if (recomputed != null && recomputed !== this._lastAutoTickerRows) {
+      this._lastAutoTickerRows = recomputed;
+      this._renderTicker(this._lastRawFlights);
+    }
   }
 
   _fmtAge(seconds) {
