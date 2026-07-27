@@ -1,3 +1,10 @@
+/*!
+ * home-assistant-flightradar24-card — Copyright (c) Springvar
+ * https://github.com/Springvar/home-assistant-flightradar24-card
+ * Licensed under the MIT License; full notice in THIRD_PARTY_LICENSES.md.
+ * This is the UNPATCHED upstream bundle, kept only as a reference baseline
+ * for diffing — do not register it as a Lovelace resource.
+ */
 (function(){window.__FR24_SILHOUETTE__=(function(){
 var P={jet:"M12 1.2c.55 0 .95.75 1.05 1.9l.2 5.2 8.55 4.6v1.7l-8.5-2.3-.2 5.1 2.8 2.15v1.45L12 19.9l-3.9 1.1v-1.45l2.8-2.15-.2-5.1-8.5 2.3v-1.7l8.55-4.6.2-5.2c.1-1.15.5-1.9 1.05-1.9z",
 wide:"M12 .8c.6 0 1.05.85 1.15 2.1l.18 4.9 9.67 5.7v2l-9.6-2.85-.2 5.75 3.3 2.5v1.55L12 21.5l-4.5 1.15v-1.55l3.3-2.5-.2-5.75L1 15.7v-2l9.67-5.7.18-4.9C10.95 1.65 11.4.8 12 .8z",

@@ -72,12 +72,13 @@ detected correctly.
      though the integration and card are both working correctly.
    - **Latitude / Longitude** — pre-filled from `hass.config`, almost always
      correct as-is.
-   - **Scan interval** — in **seconds**. OpenSky's `states/all` bounding-box
-     call is a single bulk request per poll (not one call per flight, unlike
-     the original vendor's per-flight detail-fetch pattern), so there's no
-     equivalent per-flight rate-limit risk. `60` is a reasonable default for
-     a registered OpenSky account; go higher if you're watching your daily
-     credit budget on a large radius.
+   - **Scan interval** — in **seconds**. The form pre-fills `60`, which keeps
+     a registered OpenSky account comfortably inside its 4,000-credit daily
+     budget (≈1,440 calls/day); the integration enforces a minimum of `30`.
+     OpenSky's `states/all` bounding-box call is a single bulk request per
+     poll (not one call per flight), so the only rate-limit concern is total
+     calls/day — go higher than 60 if you're watching the credit budget on a
+     large radius.
    - **OpenSky client ID / secret** — **required**, from the OpenSky account
      API client mentioned in Prerequisites. Validated live against OpenSky's
      OAuth endpoint before the entry is created — a bad credential fails
@@ -136,8 +137,11 @@ detected correctly.
 - `sensor.nearby_flights_current_in_area` has attribute `flights` as a
   non-empty list (once real air traffic is in range) and `stale: false`,
   with `status` (`Departing`/`Landing`/`Climbing`/`Descending`/`Cruising`/`On Ground`)
-  and `~Xm to go`/`~Xh Ym to go` ETA (when a destination airport was resolved)
-  populated per flight.
+  populated per flight. Note the `~Xm to go` ETA is **not** a sensor
+  attribute — it exists only in the card UI, computed client-side from the
+  destination airport coordinates and ground speed (all `time_*` sensor
+  fields are always `None`), so don't fail a verification pass on its
+  absence from the sensor.
 - The dashboard card renders a radar-style map plus a scrolling ticker list,
   not a red error box and not a "No flights currently in range" placeholder
   that never changes. (An occasional empty state is normal if there's

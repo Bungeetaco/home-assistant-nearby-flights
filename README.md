@@ -49,6 +49,20 @@ Add this repository as a custom HACS repository, then install "Nearby Flights".
 Copy the `custom_components/nearby_flights` directory into your Home Assistant
 `custom_components` directory and restart Home Assistant.
 
+### Upgrading from v1.x / the FlightRadar24 fork
+
+v2.0.0 renamed the integration domain from `flightradar24` to `nearby_flights`
+(and replaced the data source entirely), so there is no automatic migration
+from a pre-v2 install:
+
+1. Delete the old FlightRadar24-based config entry (**Settings → Devices &
+   Services**) and remove the old `custom_components/flightradar24` directory.
+2. Install this integration and add a new **Nearby Flights** entry — you'll
+   need OpenSky credentials now (see Configuration below).
+3. Entity IDs change (`sensor.nearby_flights_*` instead of
+   `sensor.flightradar24_*`) — update any automations, dashboards, and the
+   card's `entity:` config accordingly.
+
 ## Configuration
 
 Configuration is done entirely through the UI (**Settings → Devices & Services → Add
@@ -56,8 +70,10 @@ Integration → Nearby Flights**). You'll need:
 
 1. **Location**: latitude/longitude (defaults to your Home Assistant location) and a
    radius in meters to search around it.
-2. **Update interval**: how often (seconds) to poll OpenSky. Keep this comfortably
-   above what your daily API credit budget allows (registered accounts: 4,000/day).
+2. **Update interval**: how often (seconds) to poll OpenSky. Defaults to 60
+   (≈1,440 requests/day), minimum 30. Keep the resulting requests/day
+   (86,400 ÷ interval) comfortably *within* your daily API credit budget
+   (registered accounts: 4,000/day).
 3. **OpenSky client ID/secret**: register a free account at
    [opensky-network.org](https://opensky-network.org/) and create an API client under
    your account settings to get these.
@@ -97,7 +113,9 @@ are limited to renaming its custom element (`flightradar24-card` →
 `nearby-flights-map-card`, so it no longer collides with anything FlightRadar24-branded)
 and a CSS fix to make the radar map square instead of circular.
 `www/home-assistant-flightradar24-card.js` is Springvar's original, unpatched file, kept
-only as a reference baseline for diffing against upstream.
+only as a reference baseline for diffing against upstream — don't register it as a
+Lovelace resource. Both files carry Springvar's MIT license; the full notice is in
+[THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
 
 ### Installing the card
 
