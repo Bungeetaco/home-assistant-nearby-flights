@@ -2,8 +2,11 @@ name: "Auto-tag release"
 
 # Only fires when a push to main actually touches the integration or the
 # dashboard cards -- README/AGENT_SETUP/workflow-only changes don't cut a
-# release. The tag push this creates is what triggers release.yml (which
-# builds nearby_flights.zip and publishes the GitHub release).
+# release. NOTE: the tag push below does NOT trigger release.yml on its own --
+# GitHub never starts workflow runs from events created with the default
+# GITHUB_TOKEN (recursion prevention) -- so the last step explicitly
+# dispatches release.yml on the new tag (workflow_dispatch is exempt from
+# that prevention).
 on:
   push:
     branches:
@@ -14,6 +17,8 @@ on:
 
 permissions:
   contents: write
+  # Needed for the explicit release.yml dispatch in the last step.
+  actions: write
 
 jobs:
   tag:
@@ -45,3 +50,9 @@ jobs:
           echo "Tagging ${next} (previous: ${last_tag})"
           git tag "$next"
           git push origin "$next"
+          # See the header comment: the tag push above cannot trigger
+          # release.yml (GITHUB_TOKEN recursion prevention), so dispatch it
+          # explicitly on the new tag's ref.
+          gh workflow run release.yml --ref "$next"
+        env:
+          GH_TOKEN: ${{ github.token }}

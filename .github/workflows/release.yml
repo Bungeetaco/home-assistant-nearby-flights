@@ -4,6 +4,14 @@ on:
   push:
     tags:
       - "v*"
+  # auto-tag.yml pushes its tag with the default GITHUB_TOKEN, and GitHub
+  # deliberately never starts new workflow runs from events created by that
+  # token -- EXCEPT workflow_dispatch/repository_dispatch. So auto-tag
+  # explicitly dispatches this workflow on the new tag's ref instead of
+  # relying on the tag push. When running it by hand from the Actions UI,
+  # pick the tag (not a branch) as the ref -- every step below resolves the
+  # release version from the ref it runs on.
+  workflow_dispatch:
 
 permissions: {}
 
@@ -41,5 +49,11 @@ jobs:
       - name: "Create the release and upload the ZIP file"
         uses: softprops/action-gh-release@v3
         with:
-          files: ${{ github.workspace }}/custom_components/nearby_flights/nearby_flights.zip
+          # The dashboard cards ship alongside the integration zip: HACS only
+          # installs custom_components, so manually-copied cards would
+          # otherwise silently drift from the backend schema across releases.
+          files: |
+            ${{ github.workspace }}/custom_components/nearby_flights/nearby_flights.zip
+            ${{ github.workspace }}/www/flight-panel-card.js
+            ${{ github.workspace }}/www/home-assistant-flightradar24-card-square.js
           body_path: ${{ github.workspace }}/changelog.md
