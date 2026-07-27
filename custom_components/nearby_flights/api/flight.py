@@ -5,27 +5,31 @@ from typing import Any
 from .helper import (
     to_int, haversine_km, meters_to_feet, mps_to_knots, mps_to_fpm, flight_phase, Point,
 )
-from .event import EventManager
-from .opensky import OpenSkyClient
-from .adsbdb import AdsbdbClient
-from ..const import (
+from .event import (
+    EventManager,
     EVENT_ENTRY,
     EVENT_EXIT,
     EVENT_AREA_LANDED,
     EVENT_AREA_TOOK_OFF,
 )
+from .opensky import OpenSkyClient, OpenSkyAuthError
+from .adsbdb import AdsbdbClient
 
 _LOGGER = logging.getLogger(__name__)
 
 # The old backend's area/"zones" listing endpoint used to have its own soft-block
 # behavior: instead of an HTTP error, a blocked request got a valid 200 response with an
 # empty flight list, indistinguishable from a genuine "no traffic in the area right now"
-# response. The OpenSky backend below can fail the same way in spirit (a request error,
-# or a rate-limited/empty response), so this grace window is kept as generic protection:
+# response. The OpenSky backend below can soft-fail the same way (a 200 with an empty
+# list while traffic was just seen), so this grace window is kept as protection:
 # keep serving the last known-good area list for up to this many seconds since it was
 # last genuinely non-empty (flagged via self.area_stale so sensor.py/the dashboard card
-# can show it's serving cached data); past this window, trust an empty result as real --
+# can show it's serving cached data); past this window, trust an EMPTY 200 as real --
 # otherwise a genuine, prolonged lull would show stale flights forever.
+# An outright request FAILURE (exception) is handled differently: it also serves the
+# cache within this window, but past it the failure propagates to the coordinator
+# (UpdateFailed) instead of being mistaken for an empty sky - see
+# _update_flights_in_area_opensky().
 AREA_STALE_GRACE_S = 600.0
 
 
@@ -157,8 +161,8 @@ class FlightProcessor:
         self._area_stale = False
 
     def update_flights_in_area(self) -> None:
-        self._entered = {}
-        self._exited = {}
+        self._entered = []
+        self._exited = []
 
         current = self._update_flights_in_area_opensky()
 
@@ -179,28 +183,51 @@ class FlightProcessor:
             self._event_manager.add_events(EVENT_EXIT, self._exited)
         self._in_area = current
 
+    def _within_grace_window(self) -> bool:
+        return bool(self._in_area) and self._last_nonempty_monotonic is not None and (
+            time.monotonic() - self._last_nonempty_monotonic < AREA_STALE_GRACE_S
+        )
+
+    def _note_stale(self, why: str) -> None:
+        if not self._area_stale:
+            _LOGGER.warning(
+                "OpenSky area feed %s; suspected transient issue, serving cached "
+                "in-area flight list for up to %.0fs since last real data",
+                why, AREA_STALE_GRACE_S,
+            )
+        self._area_stale = True
+
     def _update_flights_in_area_opensky(self) -> dict[str, dict[str, Any]] | None:
         """OpenSky (positions) + adsbdb (route/aircraft enrichment) backend for
         the in-area feed. Returns None to mean "treat this cycle as a
-        suspected transient failure, keep serving cached data".
+        suspected transient soft block, keep serving cached data". Raises when
+        the fetch failed outright and the grace window can't cover for it, so
+        the coordinator can mark the update as failed instead of presenting an
+        empty sky as real data.
         """
         lamin, lomin, lamax, lomax = self._opensky_bbox
-        states = None
         try:
             states = self._opensky.get_states_bbox(lamin, lomin, lamax, lomax)
+        except OpenSkyAuthError:
+            # Credential problem - no grace window can fix it; propagate so
+            # the coordinator can trigger reauth.
+            raise
         except Exception as e:
-            _LOGGER.warning("OpenSky states/all request failed: %s", e)
-
-        if not states and self._in_area and self._last_nonempty_monotonic is not None and (
-            time.monotonic() - self._last_nonempty_monotonic < AREA_STALE_GRACE_S
-        ):
-            if not self._area_stale:
-                _LOGGER.warning(
-                    "OpenSky area feed returned empty/failed; suspected transient "
-                    "issue, serving cached in-area flight list for up to %.0fs "
-                    "since last real data", AREA_STALE_GRACE_S,
-                )
+            # The request FAILED (network, rate limit, server error) - that is
+            # not evidence of an empty sky, so it must never wipe the cache or
+            # fire exit events, no matter how long it lasts. Serve the cached
+            # list within the grace window; past it, surface the failure.
+            if self._within_grace_window():
+                self._note_stale(f"request failed ({e})")
+                return None
             self._area_stale = True
+            raise
+
+        if not states and self._within_grace_window():
+            # A genuine 200-with-empty-list while we recently saw traffic:
+            # suspected soft block, keep serving the cache. Only past the
+            # grace window is an empty result trusted as a real empty sky.
+            self._note_stale("returned empty")
             return None
 
         if self._area_stale and states:

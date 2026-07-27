@@ -11,7 +11,23 @@
           "opensky_client_id": "OpenSky client ID",
           "opensky_client_secret": "OpenSky client secret"
         }
+      },
+      "reauth_confirm": {
+        "title": "Re-authenticate with OpenSky",
+        "description": "OpenSky rejected the stored API credentials. Enter a valid client ID and secret to resume flight updates.",
+        "data": {
+          "opensky_client_id": "OpenSky client ID",
+          "opensky_client_secret": "OpenSky client secret"
+        }
       }
+    },
+    "error": {
+      "missing_credentials": "You need to enter both the OpenSky client ID and client secret.",
+      "invalid_auth": "OpenSky rejected these credentials.",
+      "cannot_connect": "Could not reach OpenSky to validate the credentials."
+    },
+    "abort": {
+      "reauth_successful": "Re-authentication was successful."
     }
   },
   "options": {
@@ -29,16 +45,29 @@
           "opensky_client_secret": "OpenSky client secret"
         }
       }
+    },
+    "error": {
+      "missing_credentials": "You need to enter both the OpenSky client ID and client secret.",
+      "invalid_auth": "OpenSky rejected these credentials.",
+      "cannot_connect": "Could not reach OpenSky to validate the credentials."
     }
   },
   "entity": {
     "sensor": {
-      "in_area": { "name": "Current in area" },
-      "entered": { "name": "Entered area" },
-      "exited": { "name": "Exited area" }
+      "in_area": {
+        "name": "Current in area"
+      },
+      "entered": {
+        "name": "Entered area"
+      },
+      "exited": {
+        "name": "Exited area"
+      }
     },
     "switch": {
-      "scanning": { "name": "API data fetching" }
+      "scanning": {
+        "name": "API data fetching"
+      }
     }
   },
   "issues": {

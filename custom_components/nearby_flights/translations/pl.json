@@ -2,14 +2,32 @@
   "config": {
     "step": {
       "user": {
-        "description": "Wprowadź lokalizację do śledzenia.",
+        "description": "Podaj lokalizację do śledzenia oraz dane uwierzytelniające API OpenSky Network.",
         "data": {
           "radius": "Promień w metrach",
           "latitude": "Szerokość geograficzna",
           "longitude": "Długość geograficzna",
-          "scan_interval": "Interwał aktualizacji w sekundach"
+          "scan_interval": "Interwał aktualizacji w sekundach",
+          "opensky_client_id": "ID klienta OpenSky",
+          "opensky_client_secret": "Sekret klienta OpenSky"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Ponowne uwierzytelnianie w OpenSky",
+        "description": "OpenSky odrzucił zapisane dane uwierzytelniające API. Wprowadź prawidłowy ID klienta i sekret, aby wznowić aktualizacje lotów.",
+        "data": {
+          "opensky_client_id": "ID klienta OpenSky",
+          "opensky_client_secret": "Sekret klienta OpenSky"
         }
       }
+    },
+    "error": {
+      "missing_credentials": "Musisz podać zarówno ID klienta, jak i sekret klienta OpenSky.",
+      "invalid_auth": "OpenSky odrzucił te dane uwierzytelniające.",
+      "cannot_connect": "Nie udało się połączyć z OpenSky w celu weryfikacji danych."
+    },
+    "abort": {
+      "reauth_successful": "Ponowne uwierzytelnienie powiodło się."
     }
   },
   "options": {
@@ -21,50 +39,41 @@
           "latitude": "Szerokość geograficzna",
           "longitude": "Długość geograficzna",
           "scan_interval": "Interwał aktualizacji w sekundach",
-          "min_altitude": "Minimalna wysokość w stopach",
-          "max_altitude": "Maksymalna wysokość w stopach",
-          "most_tracked": "Włącz listę najczęściej śledzonych lotów",
-          "enable_tracker": "Włącz device_tracker dla dodatkowych śledzonych lotów",
-          "auto_cleanup": "Włącz automatyczne czyszczenie śledzonych wylądowanych lotów",
-          "tracker_name_style": "Styl nazywania śledzenia na mapie",
-          "username": "Nazwa użytkownika (Opcjonalnie)",
-          "password": "Hasło (Opcjonalnie)"
+          "min_altitude": "Minimalna wysokość",
+          "max_altitude": "Maksymalna wysokość",
+          "opensky_client_id": "ID klienta OpenSky",
+          "opensky_client_secret": "Sekret klienta OpenSky"
         }
       }
+    },
+    "error": {
+      "missing_credentials": "Musisz podać zarówno ID klienta, jak i sekret klienta OpenSky.",
+      "invalid_auth": "OpenSky odrzucił te dane uwierzytelniające.",
+      "cannot_connect": "Nie udało się połączyć z OpenSky w celu weryfikacji danych."
     }
   },
   "entity": {
     "sensor": {
-      "in_area": { "name": "Loty w strefie" },
-      "entered": { "name": "Weszły do strefy" },
-      "exited": { "name": "Opuściły strefę" },
-      "most_tracked": { "name": "Najczęściej śledzone" },
-      "additional_tracked": { "name": "Dodatkowo śledzone" },
-      "airport_arrivals": { "name": "Przyloty" },
-      "airport_departures": { "name": "Odloty" },
-      "helicopters_in_area": { "name": "Helikoptery w strefie" },
-      "airport_arrivals_on_time": { "name": "Przyloty o czasie" },
-      "airport_arrivals_delayed": { "name": "Przyloty opóźnione" },
-      "airport_arrivals_delay_average": { "name": "Średnie opóźnienie przylotów" },
-      "airport_arrivals_delay_index": { "name": "Indeks opóźnień przylotów" },
-      "airport_arrivals_canceled": { "name": "Przyloty odwołane" },
-      "airport_departures_on_time": { "name": "Odloty o czasie" },
-      "airport_departures_delayed": { "name": "Odloty opóźnione" },
-      "airport_departures_delay_average": { "name": "Średnie opóźnienie odlotów" },
-      "airport_departures_delay_index": { "name": "Indeks opóźnień odlotów" },
-      "airport_departures_canceled": { "name": "Odloty odwołane" }
-    },
-    "button": {
-      "clear_tracked": { "name": "Wyczyść listę śledzenia" },
-      "tracked_clear": { "name": "Wyczyść dodatkowo śledzone" }
+      "in_area": {
+        "name": "Obecnie w obszarze"
+      },
+      "entered": {
+        "name": "Wleciały w obszar"
+      },
+      "exited": {
+        "name": "Opuściły obszar"
+      }
     },
     "switch": {
-      "scanning": { "name": "Pobieranie danych API" }
-    },
-    "text": {
-      "add_track": { "name": "Dodaj do śledzenia" },
-      "remove_track": { "name": "Usuń ze śledzenia" },
-      "airport_track": { "name": "Śledzenie lotniska" }
+      "scanning": {
+        "name": "Pobieranie danych z API"
+      }
+    }
+  },
+  "issues": {
+    "area_stale": {
+      "title": "Dane obszaru Nearby Flights mogą być tymczasowo zablokowane",
+      "description": "Integracja Nearby Flights dla **{name}** od ponad {minutes} minut pokazuje dane obszaru z pamięci podręcznej. Zwykle oznacza to, że serwery OpenSky tymczasowo ograniczają zapytania lub zapytanie kończy się błędem. Sensory zależne od samolotów w obszarze mogą być nieaktualne, dopóki problem nie minie. Nie musisz nic robić - powinno to ustąpić samoistnie, a to ostrzeżenie zniknie automatycznie po otrzymaniu świeżych danych."
     }
   }
 }

@@ -4,7 +4,8 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
-from .const import DOMAIN
+from homeassistant.helpers import issue_registry as ir
+from .const import DOMAIN, ISSUE_AREA_STALE
 from .coordinator import NearbyFlightsCoordinator
 from .api.opensky import OpenSkyClient
 from .api.adsbdb import AdsbdbClient
@@ -49,9 +50,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     coordinator = NearbyFlightsCoordinator(
         hass,
+        entry,
         entry.data[CONF_SCAN_INTERVAL],
         _LOGGER,
-        entry.entry_id,
         entry.data.get(CONF_MIN_ALTITUDE, MIN_ALTITUDE),
         entry.data.get(CONF_MAX_ALTITUDE, MAX_ALTITUDE),
         Point(latitude, longitude),
@@ -70,7 +71,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    if unload_ok:
+        coordinator = hass.data.get(DOMAIN, {}).pop(entry.entry_id, None)
+        if coordinator is not None:
+            await hass.async_add_executor_job(coordinator.close_clients)
+    return unload_ok
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    # The "area feed stale" Repair is keyed on entry_id and lives in the issue
+    # registry, which outlives the coordinator - drop it with the entry.
+    ir.async_delete_issue(hass, DOMAIN, f"{ISSUE_AREA_STALE}_{entry.entry_id}")
 
 
 async def update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:

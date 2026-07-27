@@ -791,6 +791,16 @@ class FlightPanelCard extends HTMLElement {
   // calls (confirmed to trigger a genuine coordinator refresh, not a cached re-read — see
   // _handleUpdateNowClick above).
   connectedCallback() {
+    // The subtitle tick and the ticker ResizeObserver are created in _buildDom, which
+    // only runs via setConfig — after a detach/reattach without a fresh setConfig
+    // (dashboard edit-mode DOM moves, wrapper cards), disconnectedCallback has torn
+    // them down and nothing else restores them.
+    if (this._subtitleEl && !this._subtitleTimer) {
+      this._subtitleTimer = setInterval(() => this._updateSubtitle(), 1000);
+    }
+    if (this._tickerResizeObserver && this._tickerEl) {
+      this._tickerResizeObserver.observe(this._tickerEl); // idempotent per target
+    }
     if (!this._visibilityHandler) {
       this._visibilityHandler = () => {
         if (document.hidden) {
@@ -854,10 +864,13 @@ class FlightPanelCard extends HTMLElement {
   _maybeImmediatePoll() {
     if (!this._hass) return;
     const stateObj = this._hass.states[this._config.entity];
-    const scanIntervalSec = this._config.scan_interval_seconds ?? 30;
+    // Compare against the EFFECTIVE (backed-off) interval, not the base one —
+    // otherwise every tab refocus/view switch bypasses the stale backoff and
+    // hammers an already-struggling endpoint at base cadence.
+    const effectiveSec = this._effectivePollIntervalMs() / 1000;
     if (stateObj?.last_updated) {
       const ageSec = (Date.now() - new Date(stateObj.last_updated).getTime()) / 1000;
-      if (ageSec < scanIntervalSec) return;
+      if (ageSec < effectiveSec) return;
     }
     this._pollBackendNow();
   }
@@ -874,9 +887,21 @@ class FlightPanelCard extends HTMLElement {
         this._hasError = false;
         this._updateSubtitle();
       }
+      // Backoff accounting, once per real poll (see the note in _applyHass): give the
+      // post-poll state push a moment to land, then judge freshness from the entity
+      // itself. Stale data or an unavailable entity both count toward the compounding
+      // backoff; a healthy poll resets it.
+      setTimeout(() => {
+        const st = this._hass?.states?.[this._config.entity];
+        const notFresh = !st || st.state === "unavailable" || st.state === "unknown" || !!st.attributes.stale;
+        const wasBackedOff = this._staleStreak > 0;
+        this._staleStreak = notFresh ? this._staleStreak + 1 : 0;
+        if (wasBackedOff !== this._staleStreak > 0) this._startPolling();
+      }, 500);
     } catch (e) {
       console.warn("[flight-panel-card] background poll failed:", e);
       this._errorStreak += 1;
+      this._staleStreak += 1; // a failed poll call is as not-fresh as it gets
       if (this._errorStreak >= ERROR_STREAK_THRESHOLD && !this._hasError) {
         this._hasError = true;
         this._updateSubtitle();
@@ -887,7 +912,10 @@ class FlightPanelCard extends HTMLElement {
   }
 
   disconnectedCallback() {
-    if (this._subtitleTimer) clearInterval(this._subtitleTimer);
+    if (this._subtitleTimer) {
+      clearInterval(this._subtitleTimer);
+      this._subtitleTimer = null; // so connectedCallback knows to restore it
+    }
     clearTimeout(this._backendGrowDebounceTimer);
     this._tickerResizeObserver?.disconnect();
     this._stopPolling();
@@ -980,6 +1008,13 @@ class FlightPanelCard extends HTMLElement {
     const mapConfig = this._buildMapConfig(this._hass);
     const mapEl = helpers.createCardElement(mapConfig);
     mapEl.hass = this._hass;
+    // Lovelace loads resources with no ordering guarantee: if this card's setConfig
+    // runs before the (separate) map-card resource has registered its element,
+    // createCardElement returns a hui-error-card ("Custom element doesn't exist")
+    // and later fires ll-rebuild on it once the element appears. Without remounting
+    // on that signal, the error card would be stored as _mapCardEl for the rest of
+    // the session.
+    mapEl.addEventListener("ll-rebuild", () => this._mountMapChild(), { once: true });
     this._mapPaneEl.innerHTML = "";
     this._mapPaneEl.appendChild(mapEl);
     this._mapCardEl = mapEl;
@@ -1003,7 +1038,12 @@ class FlightPanelCard extends HTMLElement {
     // code at all rather than being filtered out after the fact.
     this._unsubStateChangesPromise ||= this._subscribeToStateChanges(hass);
     if (firstHass) this._updateRequired = true; // render once immediately with whatever's already there
-    if (this._autoRefresh) this._applyHass(hass);
+    // Always propagate — pausing auto-refresh stops the POLL timer only, it must not
+    // freeze rendering. Otherwise "Update Now" while paused fetches real data (spending
+    // an OpenSky call) but the ticker/map/subtitle silently never update, and a theme
+    // flip while paused leaves the map on the wrong tile style. _applyHass is cheap:
+    // it no-ops unless _updateRequired was set by a genuine change to our entity.
+    this._applyHass(hass);
     if (firstHass) {
       this._maybeGrowBackendRadius();
       // connectedCallback may have already run and no-opped (no hass yet at that point) —
@@ -1040,7 +1080,26 @@ class FlightPanelCard extends HTMLElement {
     }
     if (!this._updateRequired) return;
     const stateObj = hass.states[this._config.entity];
-    if (!stateObj) return;
+    if (!stateObj) {
+      // Distinct from "empty sky": the entity doesn't exist at all (typo'd config,
+      // integration not set up). Leave _updateRequired set so the card recovers the
+      // moment the entity appears.
+      if (this._tickerEl) {
+        this._tickerEl.innerHTML = `<div class="fp-empty">Entity ${this._esc(this._config.entity)} not found — check the card's <code>entity</code> config and that the Nearby Flights integration is set up.</div>`;
+      }
+      return;
+    }
+    if (stateObj.state === "unavailable" || stateObj.state === "unknown") {
+      // The backend's update is failing (entities go unavailable on UpdateFailed) —
+      // say so instead of rendering it as an indistinguishable "no flights in range".
+      this._updateRequired = false;
+      this._isStale = true;
+      if (this._tickerEl) {
+        this._tickerEl.innerHTML = `<div class="fp-empty">Flight data temporarily unavailable — the backend can't reach OpenSky right now.</div>`;
+      }
+      this._updateSubtitle();
+      return;
+    }
     this._updateRequired = false;
     // The entity's own server-side timestamp, not Date.now() -- this is what actually
     // drives the "updated Xs ago" display, and using the real backend time (rather than
@@ -1053,11 +1112,13 @@ class FlightPanelCard extends HTMLElement {
     // The backend (custom_components/nearby_flights/api/flight.py, AREA_STALE_GRACE_S)
     // sets this true when the OpenSky area feed came back empty/failed and it's serving
     // the last known-good list instead of wiping it -- i.e. flights here may be real but old.
-    // Track how many CONSECUTIVE pushes have been stale so _effectivePollIntervalMs can
-    // back off progressively rather than jumping straight to the max on the first one.
+    // NOTE: the backoff streak is counted per POLL in _pollBackendNow, not here --
+    // during an outage the backend serves identical cached data (or the entity sits
+    // unavailable), so state_changed events stop arriving and a per-event count would
+    // freeze at one step. Fresh non-stale data still resets the streak immediately.
     const wasStale = this._isStale;
     this._isStale = !!stateObj.attributes.stale;
-    this._staleStreak = this._isStale ? this._staleStreak + 1 : 0;
+    if (!this._isStale) this._staleStreak = 0;
     this._renderTicker(flights);
     // Reschedule with the freshly recomputed backoff interval whenever staleness just
     // changed (entering backoff, or recovering from it) -- otherwise the currently
@@ -1149,6 +1210,20 @@ class FlightPanelCard extends HTMLElement {
     };
   }
 
+  // API-derived strings (OpenSky callsigns, adsbdb airline/airport/status fields) are
+  // third-party data and must never reach innerHTML unescaped — adsbdb's free-form
+  // community-maintained fields are the realistic injection vector, and this card
+  // already exercises admin-level config-entry APIs in the same session.
+  _esc(value) {
+    return String(value).replace(/[&<>"']/g, (c) => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;",
+    }[c]));
+  }
+
   _renderTicker(flights) {
     // Only ever list flights the map itself would also plot within its configured
     // radius. The sensor's raw `flights` attribute reflects the *backend* integration's
@@ -1186,7 +1261,12 @@ class FlightPanelCard extends HTMLElement {
     const sorted = [...inRange].sort((a, b) => {
       const av = a[sortBy] ?? 1e12;
       const bv = b[sortBy] ?? 1e12;
-      return sortDesc ? bv - av : av - bv;
+      // Subtraction only works for numbers; a string sort_by (callsign,
+      // airline, status...) would yield NaN and an arbitrary, inconsistent
+      // order.
+      const cmp =
+        typeof av === "string" || typeof bv === "string" ? String(av).localeCompare(String(bv)) : av - bv;
+      return sortDesc ? -cmp : cmp;
     });
     // `??` (not `||`) deliberately distinguishes "key entirely absent from config"
     // (undefined -> falls through to DEFAULT_MAX_TICKER_ROWS) from "key explicitly set,
@@ -1216,10 +1296,10 @@ class FlightPanelCard extends HTMLElement {
 
     const rowsHtml = limited
       .map((f) => {
-        const callsign = f.callsign || f.flight_number || "Unknown";
-        const airline = f.airline_short || "";
-        const origin = f.airport_origin_code_iata || "?";
-        const dest = f.airport_destination_code_iata || "?";
+        const callsign = this._esc(f.callsign || f.flight_number || "Unknown");
+        const airline = this._esc(f.airline_short || "");
+        const origin = this._esc(f.airport_origin_code_iata || "?");
+        const dest = this._esc(f.airport_destination_code_iata || "?");
         const alt =
           f.altitude != null
             ? `${Math.round(u.altitude.fromFt(f.altitude)).toLocaleString()} ${u.altitude.label}`
@@ -1262,7 +1342,7 @@ class FlightPanelCard extends HTMLElement {
           Climbing: "🔼",
           Descending: "🔽",
         };
-        const phase = !dep && !arr && f.status && f.status !== "Cruising" ? f.status : null;
+        const phase = !dep && !arr && f.status && f.status !== "Cruising" ? this._esc(f.status) : null;
 
         // Backend switched to OpenSky+adsbdb (2026-07-19) — f.id is now the aircraft's
         // icao24 hex (a stable per-airframe address), not the old backend's own

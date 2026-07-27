@@ -2,69 +2,78 @@
   "config": {
     "step": {
       "user": {
-        "description": "Введите местоположение для отслеживания.",
-        "data": {
-          "radius": "Радиус в метрах",
-          "latitude": "Широта",
-          "longitude": "Долгота",
-          "scan_interval": "Интервал обновления в секундах"
-        }
-      }
-    }
-  },
-  "options": {
-    "step": {
-      "init": {
-        "description": "Измените параметры для отслеживаемого местоположения.",
+        "description": "Укажите отслеживаемое местоположение и учётные данные API OpenSky Network.",
         "data": {
           "radius": "Радиус в метрах",
           "latitude": "Широта",
           "longitude": "Долгота",
           "scan_interval": "Интервал обновления в секундах",
-          "min_altitude": "Минимальная высота в футах",
-          "max_altitude": "Максимальная высота в футах",
-          "most_tracked": "Включить список самых отслеживаемых рейсов",
-          "enable_tracker": "Включить device_tracker для дополнительных отслеживаемых рейсов",
-          "auto_cleanup": "Включить автоматическую очистку отслеживаемых приземлившихся рейсов",
-          "tracker_name_style": "Стиль именования трекера на карте",
-          "username": "Имя пользователя (Необязательно)",
-          "password": "Пароль (Необязательно)"
+          "opensky_client_id": "ID клиента OpenSky",
+          "opensky_client_secret": "Секрет клиента OpenSky"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Повторная аутентификация в OpenSky",
+        "description": "OpenSky отклонил сохранённые учётные данные API. Введите действительные ID клиента и секрет, чтобы возобновить обновления рейсов.",
+        "data": {
+          "opensky_client_id": "ID клиента OpenSky",
+          "opensky_client_secret": "Секрет клиента OpenSky"
         }
       }
+    },
+    "error": {
+      "missing_credentials": "Необходимо указать и ID клиента, и секрет клиента OpenSky.",
+      "invalid_auth": "OpenSky отклонил эти учётные данные.",
+      "cannot_connect": "Не удалось связаться с OpenSky для проверки учётных данных."
+    },
+    "abort": {
+      "reauth_successful": "Повторная аутентификация выполнена успешно."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "description": "Изменить параметры отслеживаемого местоположения.",
+        "data": {
+          "radius": "Радиус в метрах",
+          "latitude": "Широта",
+          "longitude": "Долгота",
+          "scan_interval": "Интервал обновления в секундах",
+          "min_altitude": "Минимальная высота",
+          "max_altitude": "Максимальная высота",
+          "opensky_client_id": "ID клиента OpenSky",
+          "opensky_client_secret": "Секрет клиента OpenSky"
+        }
+      }
+    },
+    "error": {
+      "missing_credentials": "Необходимо указать и ID клиента, и секрет клиента OpenSky.",
+      "invalid_auth": "OpenSky отклонил эти учётные данные.",
+      "cannot_connect": "Не удалось связаться с OpenSky для проверки учётных данных."
     }
   },
   "entity": {
     "sensor": {
-      "in_area": { "name": "Рейсы в зоне" },
-      "entered": { "name": "Вошли в зону" },
-      "exited": { "name": "Покинули зону" },
-      "most_tracked": { "name": "Самые отслеживаемые" },
-      "additional_tracked": { "name": "Дополнительно отслеживаемые" },
-      "airport_arrivals": { "name": "Прибытие в аэропорт" },
-      "airport_departures": { "name": "Вылет из аэропорта" },
-      "helicopters_in_area": { "name": "Вертолеты в зоне" },
-      "airport_arrivals_on_time": { "name": "Прибытие по расписанию" },
-      "airport_arrivals_delayed": { "name": "Прибытие с задержкой" },
-      "airport_arrivals_delay_average": { "name": "Средняя задержка прибытия" },
-      "airport_arrivals_delay_index": { "name": "Индекс задержки прибытия" },
-      "airport_arrivals_canceled": { "name": "Отмененные прибытия" },
-      "airport_departures_on_time": { "name": "Вылет по расписанию" },
-      "airport_departures_delayed": { "name": "Вылет с задержкой" },
-      "airport_departures_delay_average": { "name": "Средняя задержка вылета" },
-      "airport_departures_delay_index": { "name": "Индекс задержки вылета" }, 
-      "airport_departures_canceled": { "name": "Отмененные вылеты" }
-    },
-    "button": {
-      "clear_tracked": { "name": "Очистить список отслеживания" },
-      "tracked_clear": { "name": "Очистить доп. отслеживание" }
+      "in_area": {
+        "name": "Сейчас в зоне"
+      },
+      "entered": {
+        "name": "Вошли в зону"
+      },
+      "exited": {
+        "name": "Покинули зону"
+      }
     },
     "switch": {
-      "scanning": { "name": "Получение данных API" }
-    },
-    "text": {
-      "add_track": { "name": "Добавить в отслеживание" },
-      "remove_track": { "name": "Удалить из отслеживания" },
-      "airport_track": { "name": "Отслеживание аэропорта" }
+      "scanning": {
+        "name": "Получение данных API"
+      }
+    }
+  },
+  "issues": {
+    "area_stale": {
+      "title": "Данные зоны Nearby Flights могут быть временно заблокированы",
+      "description": "Интеграция Nearby Flights для **{name}** уже более {minutes} минут показывает кэшированные данные зоны. Обычно это означает, что серверы OpenSky временно ограничивают запросы к зоне или запрос завершается ошибкой. Сенсоры, зависящие от самолётов в зоне, могут показывать устаревшие данные, пока проблема не исчезнет. Никаких действий не требуется - всё должно восстановиться само, и это предупреждение исчезнет автоматически после получения свежих данных."
     }
   }
 }

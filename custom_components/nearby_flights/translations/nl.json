@@ -2,69 +2,78 @@
   "config": {
     "step": {
       "user": {
-        "description": "Vul de te volgen locatie in.",
+        "description": "Vul de te volgen locatie en je OpenSky Network API-gegevens in.",
         "data": {
           "radius": "Straal in meters",
           "latitude": "Breedtegraad",
           "longitude": "Lengtegraad",
-          "scan_interval": "Update interval in seconden"
+          "scan_interval": "Update-interval in seconden",
+          "opensky_client_id": "OpenSky client-ID",
+          "opensky_client_secret": "OpenSky client-secret"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Opnieuw aanmelden bij OpenSky",
+        "description": "OpenSky heeft de opgeslagen API-gegevens geweigerd. Voer een geldige client-ID en secret in om de vluchtupdates te hervatten.",
+        "data": {
+          "opensky_client_id": "OpenSky client-ID",
+          "opensky_client_secret": "OpenSky client-secret"
         }
       }
+    },
+    "error": {
+      "missing_credentials": "Je moet zowel de OpenSky client-ID als het client-secret invoeren.",
+      "invalid_auth": "OpenSky heeft deze gegevens geweigerd.",
+      "cannot_connect": "Kan OpenSky niet bereiken om de gegevens te valideren."
+    },
+    "abort": {
+      "reauth_successful": "Opnieuw aanmelden is gelukt."
     }
   },
   "options": {
     "step": {
       "init": {
-        "description": "Bewerk de parameters voor de te volgen locatie.",
+        "description": "Parameters van de gevolgde locatie bewerken.",
         "data": {
           "radius": "Straal in meters",
           "latitude": "Breedtegraad",
           "longitude": "Lengtegraad",
-          "scan_interval": "Update interval in seconden",
-          "min_altitude": "Minimum hoogte in feet",
-          "max_altitude": "Maximum hoogte in feet",
-          "most_tracked": "Activeer meest gevolgde vluchtlijst",
-          "enable_tracker": "Device_tracker inschakelen voor extra trackingvluchten",
-          "auto_cleanup": "Automatisch opschonen van gelande gevolgde vluchten inschakelen",
-          "tracker_name_style": "Naamstijl kaarttracker",
-          "username": "Gebruikersnaam (Optioneel)",
-          "password": "Wachtwoord (Optioneel)"
+          "scan_interval": "Update-interval in seconden",
+          "min_altitude": "Minimale hoogte",
+          "max_altitude": "Maximale hoogte",
+          "opensky_client_id": "OpenSky client-ID",
+          "opensky_client_secret": "OpenSky client-secret"
         }
       }
+    },
+    "error": {
+      "missing_credentials": "Je moet zowel de OpenSky client-ID als het client-secret invoeren.",
+      "invalid_auth": "OpenSky heeft deze gegevens geweigerd.",
+      "cannot_connect": "Kan OpenSky niet bereiken om de gegevens te valideren."
     }
   },
   "entity": {
     "sensor": {
-      "in_area": { "name": "Vluchten in de buurt" },
-      "entered": { "name": "Gebied binnengekomen" },
-      "exited": { "name": "Gebied verlaten" },
-      "most_tracked": { "name": "Meest gevolgde vluchten" },
-      "additional_tracked": { "name": "Extra gevolgde vluchten" },
-      "airport_arrivals": { "name": "Aankomsten luchthaven" },
-      "airport_departures": { "name": "Vertrekken luchthaven" },
-      "helicopters_in_area": { "name": "Helikopters in de buurt" },
-      "airport_arrivals_on_time": { "name": "Aankomsten op tijd" },
-      "airport_arrivals_delayed": { "name": "Vertraagde aankomsten" },
-      "airport_arrivals_delay_average": { "name": "Gemiddelde vertraging aankomsten" },
-      "airport_arrivals_delay_index": { "name": "Vertragingsindex aankomsten" },
-      "airport_arrivals_canceled": { "name": "Geannuleerde aankomsten" },
-      "airport_departures_on_time": { "name": "Vertrekken op tijd" },
-      "airport_departures_delayed": { "name": "Vertraagde vertrekken" },
-      "airport_departures_delay_average": { "name": "Gemiddelde vertraging vertrekken" },
-      "airport_departures_delay_index": { "name": "Vertragingsindex vertrekken" },
-      "airport_departures_canceled": { "name": "Geannuleerde vertrekken" }
-    },
-    "button": {
-      "clear_tracked": { "name": "Lijst wissen" },
-      "tracked_clear": { "name": "Extra gevolgde vluchten wissen" }
+      "in_area": {
+        "name": "Momenteel in het gebied"
+      },
+      "entered": {
+        "name": "Gebied binnengevlogen"
+      },
+      "exited": {
+        "name": "Gebied verlaten"
+      }
     },
     "switch": {
-      "scanning": { "name": "API gegevens ophalen" }
-    },
-    "text": {
-      "add_track": { "name": "Toevoegen aan volgen" },
-      "remove_track": { "name": "Verwijderen van volgen" },
-      "airport_track": { "name": "Luchthaven volgen" }
+      "scanning": {
+        "name": "API-gegevens ophalen"
+      }
+    }
+  },
+  "issues": {
+    "area_stale": {
+      "title": "Gebiedsdata van Nearby Flights is mogelijk tijdelijk geblokkeerd",
+      "description": "De Nearby Flights-integratie voor **{name}** toont al meer dan {minutes} minuten gecachte gebiedsdata. Dit betekent meestal dat de servers van OpenSky de gebiedsfeed tijdelijk beperken, of dat het verzoek mislukt. Sensoren die afhangen van vliegtuigen in het gebied kunnen verouderd zijn totdat dit is opgelost. Er is geen actie nodig - dit lost zichzelf op zodra de feed herstelt, en deze melding verdwijnt automatisch zodra er weer verse data binnenkomt."
     }
   }
 }

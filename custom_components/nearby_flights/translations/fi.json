@@ -2,14 +2,32 @@
   "config": {
     "step": {
       "user": {
-        "description": "Anna seurattava sijainti.",
+        "description": "Täytä seurattava sijainti ja OpenSky Network -API-tunnuksesi.",
         "data": {
           "radius": "Säde metreinä",
           "latitude": "Leveysaste",
           "longitude": "Pituusaste",
-          "scan_interval": "Päivitysväli sekunteina"
+          "scan_interval": "Päivitysväli sekunneissa",
+          "opensky_client_id": "OpenSky-asiakastunnus (client ID)",
+          "opensky_client_secret": "OpenSky-asiakassalaisuus (client secret)"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Todenna uudelleen OpenSkyhin",
+        "description": "OpenSky hylkäsi tallennetut API-tunnukset. Anna kelvollinen asiakastunnus ja salaisuus jatkaaksesi lentopäivityksiä.",
+        "data": {
+          "opensky_client_id": "OpenSky-asiakastunnus (client ID)",
+          "opensky_client_secret": "OpenSky-asiakassalaisuus (client secret)"
         }
       }
+    },
+    "error": {
+      "missing_credentials": "Sinun on annettava sekä OpenSky-asiakastunnus että asiakassalaisuus.",
+      "invalid_auth": "OpenSky hylkäsi nämä tunnukset.",
+      "cannot_connect": "OpenSkyhin ei saatu yhteyttä tunnusten tarkistamiseksi."
+    },
+    "abort": {
+      "reauth_successful": "Uudelleentodennus onnistui."
     }
   },
   "options": {
@@ -20,51 +38,42 @@
           "radius": "Säde metreinä",
           "latitude": "Leveysaste",
           "longitude": "Pituusaste",
-          "scan_interval": "Päivitysväli sekunteina",
-          "min_altitude": "Minimikorkeus jalkoina",
-          "max_altitude": "Maksimikorkeus jalkoina",
-          "most_tracked": "Ota käyttöön seuratuimpien lentojen luettelo",
-          "enable_tracker": "Ota device_tracker käyttöön lisäseurannalle",
-          "auto_cleanup": "Ota käyttöön laskeutuneiden seurattujen lentojen automaattinen puhdistus",
-          "tracker_name_style": "Karttaseurannan nimeämistyyli",
-          "username": "Käyttäjätunnus (Valinnainen)",
-          "password": "Salasana (Valinnainen)"
+          "scan_interval": "Päivitysväli sekunneissa",
+          "min_altitude": "Vähimmäiskorkeus",
+          "max_altitude": "Enimmäiskorkeus",
+          "opensky_client_id": "OpenSky-asiakastunnus (client ID)",
+          "opensky_client_secret": "OpenSky-asiakassalaisuus (client secret)"
         }
       }
+    },
+    "error": {
+      "missing_credentials": "Sinun on annettava sekä OpenSky-asiakastunnus että asiakassalaisuus.",
+      "invalid_auth": "OpenSky hylkäsi nämä tunnukset.",
+      "cannot_connect": "OpenSkyhin ei saatu yhteyttä tunnusten tarkistamiseksi."
     }
   },
   "entity": {
     "sensor": {
-      "in_area": { "name": "Lennot alueella" },
-      "entered": { "name": "Saapunut alueelle" },
-      "exited": { "name": "Poistunut alueelta" },
-      "most_tracked": { "name": "Seuratuimmat" },
-      "additional_tracked": { "name": "Lisäseurannassa" },
-      "airport_arrivals": { "name": "Lentokentän saapuvat" },
-      "airport_departures": { "name": "Lentokentän lähtevät" },
-      "helicopters_in_area": { "name": "Helikopterit alueella" },
-      "airport_arrivals_on_time": { "name": "Saapuvat ajoissa" },
-      "airport_arrivals_delayed": { "name": "Saapuvat myöhässä" },
-      "airport_arrivals_delay_average": { "name": "Keskimääräinen saapumisviive" },
-      "airport_arrivals_delay_index": { "name": "Saapumisviiveindeksi" },
-      "airport_arrivals_canceled": { "name": "Perutut saapuvat" },
-      "airport_departures_on_time": { "name": "Lähtevät ajoissa" },
-      "airport_departures_delayed": { "name": "Lähtevät myöhässä" },
-      "airport_departures_delay_average": { "name": "Keskimääräinen lähtöviive" },
-      "airport_departures_delay_index": { "name": "Lähtöviiveindeksi" },
-      "airport_departures_canceled": { "name": "Perutut lähtevät" }
-    },
-    "button": {
-      "clear_tracked": { "name": "Tyhjennä seurantaluettelo" },
-      "tracked_clear": { "name": "Tyhjennä lisäseuranta" }
+      "in_area": {
+        "name": "Tällä hetkellä alueella"
+      },
+      "entered": {
+        "name": "Saapuneet alueelle"
+      },
+      "exited": {
+        "name": "Poistuneet alueelta"
+      }
     },
     "switch": {
-      "scanning": { "name": "API-tietojen nouto" }
-    },
-    "text": {
-      "add_track": { "name": "Lisää seurantaan" },
-      "remove_track": { "name": "Poista seurannasta" },
-      "airport_track": { "name": "Lentokentän seuranta" }
+      "scanning": {
+        "name": "API-tietojen haku"
+      }
+    }
+  },
+  "issues": {
+    "area_stale": {
+      "title": "Nearby Flights -aluetiedot voivat olla tilapäisesti estettyjä",
+      "description": "Nearby Flights -integraatio kohteelle **{name}** on näyttänyt välimuistissa olevia aluetietoja yli {minutes} minuuttia. Yleensä tämä tarkoittaa, että OpenSkyn palvelimet rajoittavat tilapäisesti pyyntöjä tai pyyntö epäonnistuu. Alueen lentokoneista riippuvat anturit voivat olla vanhentuneita, kunnes tilanne korjaantuu. Toimenpiteitä ei tarvita - tilanteen pitäisi korjaantua itsestään, ja tämä ilmoitus poistuu automaattisesti, kun tuoreita tietoja taas saadaan."
     }
   }
 }

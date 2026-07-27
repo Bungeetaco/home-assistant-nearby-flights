@@ -12,9 +12,8 @@ from homeassistant.core import HomeAssistant, callback
 from .const import DOMAIN
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
-from homeassistant.helpers import entity_registry as er  # Imported for migration
+from homeassistant.util import dt as dt_util
 from .coordinator import NearbyFlightsCoordinator
-import datetime
 import copy
 
 
@@ -63,20 +62,6 @@ RESTORE_SENSOR_TYPES: tuple[NearbyFlightsSensorEntityDescription, ...] = (
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
     coordinator = hass.data[DOMAIN][entry.entry_id]
 
-    # --- DYNAMIC MIGRATION LOGIC TO PREVENT BREAKING CHANGES ---
-    ent_reg = er.async_get(hass)
-    for description in SENSOR_TYPES + RESTORE_SENSOR_TYPES:
-        old_unique_id = f"{coordinator.unique_id}_{DOMAIN}_{description.key}"
-        new_unique_id = f"{entry.entry_id}_{DOMAIN}_{description.key}"
-        if entity_id := ent_reg.async_get_entity_id("sensor", DOMAIN, old_unique_id):
-            # Bulletproof check: Only migrate if the new ID isn't already taken!
-            if not ent_reg.async_get_entity_id("sensor", DOMAIN, new_unique_id):
-                try:
-                    ent_reg.async_update_entity(entity_id, new_unique_id=new_unique_id)
-                except ValueError:
-                    pass
-    # -----------------------------------------------------------
-
     sensors = []
     for description in SENSOR_TYPES:
         sensors.append(NearbyFlightsSensor(coordinator, description, entry.entry_id))
@@ -89,8 +74,11 @@ class NearbyFlightsSensor(CoordinatorEntity[NearbyFlightsCoordinator], SensorEnt
     _attr_has_entity_name = True
     entity_description: NearbyFlightsSensorEntityDescription
 
-    # TELL THE RECORDER TO IGNORE THE MASSIVE FLIGHTS ARRAY
-    _unrecorded_attributes = frozenset({"flights"})
+    # Keep the massive flights array out of the recorder, along with the
+    # per-cycle bookkeeping attributes (last_updated changes every single
+    # update and would otherwise force a fresh recorder attributes row per
+    # sensor per poll; stale flips with it).
+    _unrecorded_attributes = frozenset({"flights", "last_updated", "stale"})
 
     def __init__(
             self,
@@ -110,7 +98,7 @@ class NearbyFlightsSensor(CoordinatorEntity[NearbyFlightsCoordinator], SensorEnt
         self._attr_native_value = self.entity_description.value(self.coordinator)
         if self.entity_description.attributes and self.entity_description.attributes(self.coordinator) is not None:
             new_attributes = copy.deepcopy(self.entity_description.attributes(self.coordinator))
-            new_attributes["last_updated"] = datetime.datetime.now().isoformat()
+            new_attributes["last_updated"] = dt_util.utcnow().isoformat()
             self._attr_extra_state_attributes = new_attributes
         self.async_write_ha_state()
 
@@ -131,7 +119,7 @@ class NearbyFlightsRestoreSensor(NearbyFlightsSensor, RestoreSensor):
     # completely decoupled from _unrecorded_attributes / the recorder's
     # MAX_STATE_ATTRS_BYTES cutoff -- that setting only governs the SQL
     # history/logbook tables.
-    _unrecorded_attributes = frozenset({"flights"})
+    _unrecorded_attributes = frozenset({"flights", "last_updated", "stale"})
 
     def _restore_in_area(self, flights: list[dict[str, Any]]) -> None:
         # set_in_area() (see api/flight.py) also seeds _last_nonempty_monotonic to
@@ -158,4 +146,11 @@ class NearbyFlightsRestoreSensor(NearbyFlightsSensor, RestoreSensor):
 
         handler = self._RESTORE_HANDLERS.get(self.entity_description.key)
         if handler is not None:
-            handler(self, last_state.attributes.get('flights', {}))
+            # Only seed from the snapshot when the coordinator has no live data:
+            # this runs AFTER the entry's first refresh, and overwriting a
+            # successful live result with the pre-restart snapshot made the next
+            # cycle diff live-vs-stale and fire a false exit event for every
+            # flight that left while HA was down.
+            if self.coordinator.flight.in_area_list:
+                return
+            handler(self, last_state.attributes.get('flights', []))

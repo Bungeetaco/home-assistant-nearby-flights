@@ -2,69 +2,78 @@
   "config": {
     "step": {
       "user": {
-        "description": "İzlenecek konumu doldurun.",
-        "data": {
-          "radius": "Metre cinsinden yarıçap",
-          "latitude": "Enlem",
-          "longitude": "Boylam",
-          "scan_interval": "Saniye cinsinden güncelleme aralığı"
-        }
-      }
-    }
-  },
-  "options": {
-    "step": {
-      "init": {
-        "description": "İzlenecek konum parametrelerini düzenleyin.",
+        "description": "İzlenecek konumu ve OpenSky Network API kimlik bilgilerinizi girin.",
         "data": {
           "radius": "Metre cinsinden yarıçap",
           "latitude": "Enlem",
           "longitude": "Boylam",
           "scan_interval": "Saniye cinsinden güncelleme aralığı",
-          "min_altitude": "Ayak cinsinden minimum irtifa",
-          "max_altitude": "Ayak cinsinden maksimum irtifa",
-          "most_tracked": "En çok izlenen uçuşlar listesini etkinleştir",
-          "enable_tracker": "Ek izleme uçuşları için device_tracker'ı etkinleştir",
-          "auto_cleanup": "İniş yapan takip edilen uçuşlar için otomatik temizlemeyi etkinleştir",
-          "tracker_name_style": "Harita Takipçisi Adlandırma Stili",
-          "username": "Kullanıcı adı (İsteğe bağlı)",
-          "password": "Şifre (İsteğe bağlı)"
+          "opensky_client_id": "OpenSky istemci kimliği",
+          "opensky_client_secret": "OpenSky istemci sırrı"
+        }
+      },
+      "reauth_confirm": {
+        "title": "OpenSky ile yeniden kimlik doğrulama",
+        "description": "OpenSky, kayıtlı API kimlik bilgilerini reddetti. Uçuş güncellemelerine devam etmek için geçerli bir istemci kimliği ve sırrı girin.",
+        "data": {
+          "opensky_client_id": "OpenSky istemci kimliği",
+          "opensky_client_secret": "OpenSky istemci sırrı"
         }
       }
+    },
+    "error": {
+      "missing_credentials": "Hem OpenSky istemci kimliğini hem de istemci sırrını girmelisiniz.",
+      "invalid_auth": "OpenSky bu kimlik bilgilerini reddetti.",
+      "cannot_connect": "Kimlik bilgilerini doğrulamak için OpenSky'a ulaşılamadı."
+    },
+    "abort": {
+      "reauth_successful": "Yeniden kimlik doğrulama başarılı oldu."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "description": "İzlenen konumun parametrelerini düzenleyin.",
+        "data": {
+          "radius": "Metre cinsinden yarıçap",
+          "latitude": "Enlem",
+          "longitude": "Boylam",
+          "scan_interval": "Saniye cinsinden güncelleme aralığı",
+          "min_altitude": "Minimum irtifa",
+          "max_altitude": "Maksimum irtifa",
+          "opensky_client_id": "OpenSky istemci kimliği",
+          "opensky_client_secret": "OpenSky istemci sırrı"
+        }
+      }
+    },
+    "error": {
+      "missing_credentials": "Hem OpenSky istemci kimliğini hem de istemci sırrını girmelisiniz.",
+      "invalid_auth": "OpenSky bu kimlik bilgilerini reddetti.",
+      "cannot_connect": "Kimlik bilgilerini doğrulamak için OpenSky'a ulaşılamadı."
     }
   },
   "entity": {
     "sensor": {
-      "in_area": { "name": "Bölgedeki uçuşlar" },
-      "entered": { "name": "Bölgeye giren" },
-      "exited": { "name": "Bölgeden çıkan" },
-      "most_tracked": { "name": "En çok izlenen" },
-      "additional_tracked": { "name": "Ek izlenenler" },
-      "airport_arrivals": { "name": "Havalimanı varışları" },
-      "airport_departures": { "name": "Havalimanı kalkışları" },
-      "helicopters_in_area": { "name": "Bölgedeki helikopterler" },
-      "airport_arrivals_on_time": { "name": "Zamanında varışlar" },
-      "airport_arrivals_delayed": { "name": "Gecikmeli varışlar" },
-      "airport_arrivals_delay_average": { "name": "Varış ortalama gecikme" },
-      "airport_arrivals_delay_index": { "name": "Varış gecikme indeksi" },
-      "airport_arrivals_canceled": { "name": "İptal edilen varışlar" },
-      "airport_departures_on_time": { "name": "Zamanında kalkışlar" },
-      "airport_departures_delayed": { "name": "Gecikmeli kalkışlar" },
-      "airport_departures_delay_average": { "name": "Kalkış ortalama gecikme" },
-      "airport_departures_delay_index": { "name": "Kalkış gecikme indeksi" },
-      "airport_departures_canceled": { "name": "İptal edilen kalkışlar" }
-    },
-    "button": {
-      "clear_tracked": { "name": "İzleme listesini temizle" },
-      "tracked_clear": { "name": "Ek izlenenleri temizle" }
+      "in_area": {
+        "name": "Şu anda bölgede"
+      },
+      "entered": {
+        "name": "Bölgeye girenler"
+      },
+      "exited": {
+        "name": "Bölgeden çıkanlar"
+      }
     },
     "switch": {
-      "scanning": { "name": "API veri alımı" }
-    },
-    "text": {
-      "add_track": { "name": "Takibe ekle" },
-      "remove_track": { "name": "Takipten çıkar" },
-      "airport_track": { "name": "Havalimanı takibi" }
+      "scanning": {
+        "name": "API veri alımı"
+      }
+    }
+  },
+  "issues": {
+    "area_stale": {
+      "title": "Nearby Flights bölge verileri geçici olarak engellenmiş olabilir",
+      "description": "**{name}** için Nearby Flights entegrasyonu {minutes} dakikadan uzun süredir önbelleğe alınmış bölge verilerini gösteriyor. Bu genellikle OpenSky sunucularının istekleri geçici olarak sınırladığı veya isteğin başarısız olduğu anlamına gelir. Bölgedeki uçaklara bağlı sensörler bu durum geçene kadar güncel olmayabilir. Herhangi bir işlem gerekmez - sorun kendiliğinden düzelecek ve yeni veriler alındığında bu uyarı otomatik olarak kaybolacaktır."
     }
   }
 }

@@ -9,8 +9,8 @@ from homeassistant.components.switch import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
@@ -24,31 +24,6 @@ async def async_setup_entry(
 ) -> None:
     coordinator = hass.data[DOMAIN][entry.entry_id]
 
-    # --- DYNAMIC MIGRATION LOGIC FOR THE SWITCH ---
-    ent_reg = er.async_get(hass)
-    old_unique_id = f"{coordinator.unique_id}_{DOMAIN}_scanning"
-    new_unique_id = f"{entry.entry_id}_{DOMAIN}_scanning"
-
-    if entity_id := ent_reg.async_get_entity_id(
-        "switch",
-        DOMAIN,
-        old_unique_id,
-    ):
-        # Bulletproof check: Only migrate if the new ID isn't already taken!
-        if not ent_reg.async_get_entity_id(
-            "switch",
-            DOMAIN,
-            new_unique_id,
-        ):
-            try:
-                ent_reg.async_update_entity(
-                    entity_id,
-                    new_unique_id=new_unique_id,
-                )
-            except ValueError:
-                pass
-    # ----------------------------------------------
-
     async_add_entities(
         [NearbyFlightsScanEntity(coordinator, entry.entry_id)],
         False,
@@ -58,6 +33,7 @@ async def async_setup_entry(
 class NearbyFlightsScanEntity(
     CoordinatorEntity[NearbyFlightsCoordinator],
     SwitchEntity,
+    RestoreEntity,
 ):
     _attr_has_entity_name = True
     entity_description: SwitchEntityDescription
@@ -82,6 +58,18 @@ class NearbyFlightsScanEntity(
         self._attr_unique_id = (
             f"{entry_id}_{DOMAIN}_{self.entity_description.key}"
         )
+
+    async def async_added_to_hass(self) -> None:
+        """Restore the user's scanning on/off choice across restarts.
+
+        Without this, every restart/reload silently re-enabled metered
+        OpenSky polling even when the user had deliberately switched it off.
+        """
+        await super().async_added_to_hass()
+        last = await self.async_get_last_state()
+        if last is not None and last.state == "off":
+            self.coordinator.scanning = False
+            self.coordinator.flight.clear_live_data()
 
     @property
     def is_on(self) -> bool:

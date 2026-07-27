@@ -62,7 +62,7 @@ def to_int(element: Any) -> None | int:
         return None
     try:
         return int(element)
-    except ValueError:
+    except (TypeError, ValueError):
         return None
 
 

@@ -2,69 +2,78 @@
   "config": {
     "step": {
       "user": {
-        "description": "Geben Sie den zu verfolgenden Standort ein.",
-        "data": {
-          "radius": "Radius in Metern",
-          "latitude": "Breitengrad",
-          "longitude": "Längengrad",
-          "scan_interval": "Aktualisierungsintervall in Sekunden"
-        }
-      }
-    }
-  },
-  "options": {
-    "step": {
-      "init": {
-        "description": "Bearbeiten Sie die Parameter für den Standort.",
+        "description": "Gib den zu überwachenden Standort und deine OpenSky-Network-API-Zugangsdaten ein.",
         "data": {
           "radius": "Radius in Metern",
           "latitude": "Breitengrad",
           "longitude": "Längengrad",
           "scan_interval": "Aktualisierungsintervall in Sekunden",
-          "min_altitude": "Mindesthöhe in Fuß",
-          "max_altitude": "Maximale Höhe in Fuß",
-          "most_tracked": "Liste der meistverfolgten Flüge aktivieren",
-          "enable_tracker": "Device_tracker für zusätzliche verfolgte Flüge aktivieren",
-          "auto_cleanup": "Automatische Bereinigung gelandeter verfolgter Flüge aktivieren",
-          "tracker_name_style": "Benennungsstil für Karten-Tracker",
-          "username": "Benutzername (Optional)",
-          "password": "Passwort (Optional)"
+          "opensky_client_id": "OpenSky-Client-ID",
+          "opensky_client_secret": "OpenSky-Client-Secret"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Erneut bei OpenSky anmelden",
+        "description": "OpenSky hat die gespeicherten API-Zugangsdaten abgelehnt. Gib eine gültige Client-ID und ein gültiges Secret ein, um die Flugaktualisierungen fortzusetzen.",
+        "data": {
+          "opensky_client_id": "OpenSky-Client-ID",
+          "opensky_client_secret": "OpenSky-Client-Secret"
         }
       }
+    },
+    "error": {
+      "missing_credentials": "Es müssen sowohl die OpenSky-Client-ID als auch das Client-Secret angegeben werden.",
+      "invalid_auth": "OpenSky hat diese Zugangsdaten abgelehnt.",
+      "cannot_connect": "OpenSky konnte zur Überprüfung der Zugangsdaten nicht erreicht werden."
+    },
+    "abort": {
+      "reauth_successful": "Die erneute Authentifizierung war erfolgreich."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "description": "Parameter für den überwachten Standort bearbeiten.",
+        "data": {
+          "radius": "Radius in Metern",
+          "latitude": "Breitengrad",
+          "longitude": "Längengrad",
+          "scan_interval": "Aktualisierungsintervall in Sekunden",
+          "min_altitude": "Minimale Höhe",
+          "max_altitude": "Maximale Höhe",
+          "opensky_client_id": "OpenSky-Client-ID",
+          "opensky_client_secret": "OpenSky-Client-Secret"
+        }
+      }
+    },
+    "error": {
+      "missing_credentials": "Es müssen sowohl die OpenSky-Client-ID als auch das Client-Secret angegeben werden.",
+      "invalid_auth": "OpenSky hat diese Zugangsdaten abgelehnt.",
+      "cannot_connect": "OpenSky konnte zur Überprüfung der Zugangsdaten nicht erreicht werden."
     }
   },
   "entity": {
     "sensor": {
-      "in_area": { "name": "Flüge im Bereich" },
-      "entered": { "name": "Bereich betreten" },
-      "exited": { "name": "Bereich verlassen" },
-      "most_tracked": { "name": "Meistverfolgt" },
-      "additional_tracked": { "name": "Zusätzlich verfolgt" },
-      "airport_arrivals": { "name": "Flughafen Ankünfte" },
-      "airport_departures": { "name": "Flughafen Abflüge" },
-      "helicopters_in_area": { "name": "Hubschrauber im Bereich" },
-      "airport_arrivals_on_time": { "name": "Ankünfte pünktlich" },
-      "airport_arrivals_delayed": { "name": "Ankünfte verspätet" },
-      "airport_arrivals_delay_average": { "name": "Durchschnittliche Ankunftsverspätung" },
-      "airport_arrivals_delay_index": { "name": "Ankunftsverspätungsindex" },
-      "airport_arrivals_canceled": { "name": "Ankünfte storniert" },
-      "airport_departures_on_time": { "name": "Abflüge pünktlich" },
-      "airport_departures_delayed": { "name": "Abflüge verspätet" },
-      "airport_departures_delay_average": { "name": "Durchschnittliche Abflugverspätung" },
-      "airport_departures_delay_index": { "name": "Abflugverspätungsindex" },
-      "airport_departures_canceled": { "name": "Abflüge storniert" }
-    },
-    "button": {
-      "clear_tracked": { "name": "Verfolgungsliste löschen" },
-      "tracked_clear": { "name": "Zusätzlich verfolgte löschen" }
+      "in_area": {
+        "name": "Aktuell im Gebiet"
+      },
+      "entered": {
+        "name": "In das Gebiet eingeflogen"
+      },
+      "exited": {
+        "name": "Aus dem Gebiet ausgeflogen"
+      }
     },
     "switch": {
-      "scanning": { "name": "API-Datenabruf" }
-    },
-    "text": {
-      "add_track": { "name": "Zur Verfolgung hinzufügen" },
-      "remove_track": { "name": "Von Verfolgung entfernen" },
-      "airport_track": { "name": "Flughafen-Verfolgung" }
+      "scanning": {
+        "name": "API-Datenabruf"
+      }
+    }
+  },
+  "issues": {
+    "area_stale": {
+      "title": "Nearby-Flights-Gebietsdaten sind möglicherweise vorübergehend blockiert",
+      "description": "Die Nearby-Flights-Integration für **{name}** zeigt seit mehr als {minutes} Minuten zwischengespeicherte Gebietsdaten an. Das bedeutet in der Regel, dass die OpenSky-Server den Gebietsfeed vorübergehend drosseln oder die Anfrage fehlschlägt. Sensoren, die von Flugzeugen im Gebiet abhängen, können veraltet sein, bis das Problem behoben ist. Es ist nichts zu tun - das Problem sollte sich von selbst lösen, sobald der Feed sich erholt; diese Meldung verschwindet automatisch, wenn wieder frische Daten empfangen werden."
     }
   }
 }

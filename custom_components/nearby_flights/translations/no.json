@@ -2,69 +2,78 @@
   "config": {
     "step": {
       "user": {
-        "description": "Fyll inn posisjonen som skal spores.",
-        "data": {
-          "radius": "Radius i meter",
-          "latitude": "Breddegrad",
-          "longitude": "Lengdegrad",
-          "scan_interval": "Oppdateringsintervall i sekunder"
-        }
-      }
-    }
-  },
-  "options": {
-    "step": {
-      "init": {
-        "description": "Rediger parametere for posisjonen som spores.",
+        "description": "Fyll inn posisjonen som skal spores og API-legitimasjonen din for OpenSky Network.",
         "data": {
           "radius": "Radius i meter",
           "latitude": "Breddegrad",
           "longitude": "Lengdegrad",
           "scan_interval": "Oppdateringsintervall i sekunder",
-          "min_altitude": "Minimum høyde i fot",
-          "max_altitude": "Maksimum høyde i fot",
-          "most_tracked": "Aktiver liste over mest sporet fly",
-          "enable_tracker": "Aktiver device_tracker for ekstra flysporing",
-          "auto_cleanup": "Aktiver automatisk opprydding av sporede landede flyvninger",
-          "tracker_name_style": "Navngivningsstil for kartsporing",
-          "username": "Brukernavn (Valgfritt)",
-          "password": "Passord (Valgfritt)"
+          "opensky_client_id": "OpenSky klient-ID",
+          "opensky_client_secret": "OpenSky klienthemmelighet"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Autentiser på nytt hos OpenSky",
+        "description": "OpenSky avviste den lagrede API-legitimasjonen. Skriv inn gyldig klient-ID og hemmelighet for å gjenoppta flyoppdateringene.",
+        "data": {
+          "opensky_client_id": "OpenSky klient-ID",
+          "opensky_client_secret": "OpenSky klienthemmelighet"
         }
       }
+    },
+    "error": {
+      "missing_credentials": "Du må oppgi både OpenSky klient-ID og klienthemmelighet.",
+      "invalid_auth": "OpenSky avviste denne legitimasjonen.",
+      "cannot_connect": "Fikk ikke kontakt med OpenSky for å validere legitimasjonen."
+    },
+    "abort": {
+      "reauth_successful": "Ny autentisering var vellykket."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "description": "Rediger parametre for den sporede posisjonen.",
+        "data": {
+          "radius": "Radius i meter",
+          "latitude": "Breddegrad",
+          "longitude": "Lengdegrad",
+          "scan_interval": "Oppdateringsintervall i sekunder",
+          "min_altitude": "Minimumshøyde",
+          "max_altitude": "Maksimumshøyde",
+          "opensky_client_id": "OpenSky klient-ID",
+          "opensky_client_secret": "OpenSky klienthemmelighet"
+        }
+      }
+    },
+    "error": {
+      "missing_credentials": "Du må oppgi både OpenSky klient-ID og klienthemmelighet.",
+      "invalid_auth": "OpenSky avviste denne legitimasjonen.",
+      "cannot_connect": "Fikk ikke kontakt med OpenSky for å validere legitimasjonen."
     }
   },
   "entity": {
     "sensor": {
-      "in_area": { "name": "Fly i området" },
-      "entered": { "name": "Område inntrådt" },
-      "exited": { "name": "Område forlatt" },
-      "most_tracked": { "name": "Mest sporet" },
-      "additional_tracked": { "name": "Ekstra sporet" },
-      "airport_arrivals": { "name": "Flyplassankomster" },
-      "airport_departures": { "name": "Flyplassavganger" },
-      "helicopters_in_area": { "name": "Helikoptre i området" },
-      "airport_arrivals_on_time": { "name": "Ankomster i tide" },
-      "airport_arrivals_delayed": { "name": "Forsinkede ankomster" },
-      "airport_arrivals_delay_average": { "name": "Gjennomsnittlig ankomstforsinkelse" },
-      "airport_arrivals_delay_index": { "name": "Ankomstforsinkelsesindeks" },
-      "airport_arrivals_canceled": { "name": "Kansellerte ankomster" },
-      "airport_departures_on_time": { "name": "Avganger i tide" },
-      "airport_departures_delayed": { "name": "Forsinkede avganger" },
-      "airport_departures_delay_average": { "name": "Gjennomsnittlig avgangsforsinkelse" },
-      "airport_departures_delay_index": { "name": "Avgangsforsinkelsesindeks" },
-      "airport_departures_canceled": { "name": "Kansellerte avganger" }
-    },
-    "button": {
-      "clear_tracked": { "name": "Tøm sporingsliste" },
-      "tracked_clear": { "name": "Tøm ekstra sporing" }
+      "in_area": {
+        "name": "For øyeblikket i området"
+      },
+      "entered": {
+        "name": "Fløyet inn i området"
+      },
+      "exited": {
+        "name": "Forlatt området"
+      }
     },
     "switch": {
-      "scanning": { "name": "API-datainnhenting" }
-    },
-    "text": {
-      "add_track": { "name": "Legg til sporing" },
-      "remove_track": { "name": "Fjern fra sporing" },
-      "airport_track": { "name": "Flyplass-sporing" }
+      "scanning": {
+        "name": "Henting av API-data"
+      }
+    }
+  },
+  "issues": {
+    "area_stale": {
+      "title": "Områdedata for Nearby Flights kan være midlertidig blokkert",
+      "description": "Nearby Flights-integrasjonen for **{name}** har vist mellomlagrede områdedata i mer enn {minutes} minutter. Dette betyr vanligvis at OpenSky-serverne midlertidig begrenser forespørslene, eller at forespørselen feiler. Sensorer som avhenger av fly i området kan være utdaterte til dette går over. Ingen handling er nødvendig - dette bør løse seg selv, og denne advarselen forsvinner automatisk når ferske data mottas igjen."
     }
   }
 }

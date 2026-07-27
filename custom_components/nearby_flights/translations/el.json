@@ -2,69 +2,78 @@
   "config": {
     "step": {
       "user": {
-        "description": "Συμπληρώστε την τοποθεσία για παρακολούθηση.",
-        "data": {
-          "radius": "Ακτίνα σε μέτρα",
-          "latitude": "Γεωγραφικό πλάτος",
-          "longitude": "Γεωγραφικό μήκος",
-          "scan_interval": "Διάστημα ενημέρωσης σε δευτερόλεπτα"
-        }
-      }
-    }
-  },
-  "options": {
-    "step": {
-      "init": {
-        "description": "Επεξεργασία παραμέτρων για την τοποθεσία.",
+        "description": "Συμπληρώστε την τοποθεσία παρακολούθησης και τα διαπιστευτήρια API του OpenSky Network.",
         "data": {
           "radius": "Ακτίνα σε μέτρα",
           "latitude": "Γεωγραφικό πλάτος",
           "longitude": "Γεωγραφικό μήκος",
           "scan_interval": "Διάστημα ενημέρωσης σε δευτερόλεπτα",
-          "min_altitude": "Ελάχιστο υψόμετρο σε πόδια",
-          "max_altitude": "Μέγιστο υψόμετρο σε πόδια",
-          "most_tracked": "Ενεργοποίηση λίστας πτήσεων με τη μεγαλύτερη παρακολούθηση",
-          "enable_tracker": "Ενεργοποίηση device_tracker για επιπλέον παρακολούθηση πτήσεων",
-          "auto_cleanup": "Ενεργοποίηση αυτόματου καθαρισμού παρακολουθούμενων προσγειωμένων πτήσεων",
-          "tracker_name_style": "Στυλ ονομασίας παρακολούθησης χάρτη",
-          "username": "Όνομα χρήστη (Προαιρετικό)",
-          "password": "Κωδικός πρόσβασης (Προαιρετικό)"
+          "opensky_client_id": "OpenSky client ID",
+          "opensky_client_secret": "OpenSky client secret"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Επανάληψη ελέγχου ταυτότητας στο OpenSky",
+        "description": "Το OpenSky απέρριψε τα αποθηκευμένα διαπιστευτήρια API. Εισαγάγετε έγκυρο client ID και secret για να συνεχιστούν οι ενημερώσεις πτήσεων.",
+        "data": {
+          "opensky_client_id": "OpenSky client ID",
+          "opensky_client_secret": "OpenSky client secret"
         }
       }
+    },
+    "error": {
+      "missing_credentials": "Πρέπει να εισαγάγετε τόσο το client ID όσο και το client secret του OpenSky.",
+      "invalid_auth": "Το OpenSky απέρριψε αυτά τα διαπιστευτήρια.",
+      "cannot_connect": "Αδύνατη η επικοινωνία με το OpenSky για επαλήθευση των διαπιστευτηρίων."
+    },
+    "abort": {
+      "reauth_successful": "Ο επανέλεγχος ταυτότητας ολοκληρώθηκε με επιτυχία."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "description": "Επεξεργασία παραμέτρων της παρακολουθούμενης τοποθεσίας.",
+        "data": {
+          "radius": "Ακτίνα σε μέτρα",
+          "latitude": "Γεωγραφικό πλάτος",
+          "longitude": "Γεωγραφικό μήκος",
+          "scan_interval": "Διάστημα ενημέρωσης σε δευτερόλεπτα",
+          "min_altitude": "Ελάχιστο υψόμετρο",
+          "max_altitude": "Μέγιστο υψόμετρο",
+          "opensky_client_id": "OpenSky client ID",
+          "opensky_client_secret": "OpenSky client secret"
+        }
+      }
+    },
+    "error": {
+      "missing_credentials": "Πρέπει να εισαγάγετε τόσο το client ID όσο και το client secret του OpenSky.",
+      "invalid_auth": "Το OpenSky απέρριψε αυτά τα διαπιστευτήρια.",
+      "cannot_connect": "Αδύνατη η επικοινωνία με το OpenSky για επαλήθευση των διαπιστευτηρίων."
     }
   },
   "entity": {
     "sensor": {
-      "in_area": { "name": "Πτήσεις στην περιοχή" },
-      "entered": { "name": "Εισήλθαν στην περιοχή" },
-      "exited": { "name": "Εξήλθαν από την περιοχή" },
-      "most_tracked": { "name": "Μεγαλύτερη παρακολούθηση" },
-      "additional_tracked": { "name": "Επιπλέον παρακολούθηση" },
-      "airport_arrivals": { "name": "Αφίξεις αεροδρομίου" },
-      "airport_departures": { "name": "Αναχωρήσεις αεροδρομίου" },
-      "helicopters_in_area": { "name": "Ελικόπτερα στην περιοχή" },
-      "airport_arrivals_on_time": { "name": "Αφίξεις στην ώρα τους" },
-      "airport_arrivals_delayed": { "name": "Καθυστερημένες αφίξεις" },
-      "airport_arrivals_delay_average": { "name": "Μέσος όρος καθυστέρησης αφίξεων" },
-      "airport_arrivals_delay_index": { "name": "Δείκτης καθυστέρησης αφίξεων" },
-      "airport_arrivals_canceled": { "name": "Ακυρωμένες αφίξεις" },
-      "airport_departures_on_time": { "name": "Αναχωρήσεις στην ώρα τους" },
-      "airport_departures_delayed": { "name": "Καθυστερημένες αναχωρήσεις" },
-      "airport_departures_delay_average": { "name": "Μέσος όρος καθυστέρησης αναχωρήσεων" },
-      "airport_departures_delay_index": { "name": "Δείκτης καθυστέρησης αναχωρήσεων" },
-      "airport_departures_canceled": { "name": "Ακυρωμένες αναχωρήσεις" }
-    },
-    "button": {
-      "clear_tracked": { "name": "Εκκαθάριση λίστας παρακολούθησης" },
-      "tracked_clear": { "name": "Εκκαθάριση επιπλέον παρακολούθησης" }
+      "in_area": {
+        "name": "Αυτή τη στιγμή στην περιοχή"
+      },
+      "entered": {
+        "name": "Εισήλθαν στην περιοχή"
+      },
+      "exited": {
+        "name": "Εξήλθαν από την περιοχή"
+      }
     },
     "switch": {
-      "scanning": { "name": "Λήψη δεδομένων API" }
-    },
-    "text": {
-      "add_track": { "name": "Προσθήκη στην παρακολούθηση" },
-      "remove_track": { "name": "Αφαίρεση από την παρακολούθηση" },
-      "airport_track": { "name": "Παρακολούθηση αεροδρομίου" }
+      "scanning": {
+        "name": "Λήψη δεδομένων API"
+      }
+    }
+  },
+  "issues": {
+    "area_stale": {
+      "title": "Τα δεδομένα περιοχής του Nearby Flights ίσως είναι προσωρινά αποκλεισμένα",
+      "description": "Η ενσωμάτωση Nearby Flights για **{name}** εμφανίζει δεδομένα περιοχής από την προσωρινή μνήμη για περισσότερα από {minutes} λεπτά. Συνήθως αυτό σημαίνει ότι οι διακομιστές του OpenSky περιορίζουν προσωρινά τα αιτήματα ή ότι το αίτημα αποτυγχάνει. Οι αισθητήρες που εξαρτώνται από τα αεροσκάφη στην περιοχή ενδέχεται να είναι παρωχημένοι μέχρι να αποκατασταθεί. Δεν απαιτείται καμία ενέργεια - θα αποκατασταθεί από μόνο του και αυτή η ειδοποίηση θα εξαφανιστεί αυτόματα μόλις ληφθούν νέα δεδομένα."
     }
   }
 }

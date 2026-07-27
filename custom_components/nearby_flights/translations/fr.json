@@ -2,69 +2,78 @@
   "config": {
     "step": {
       "user": {
-        "description": "Renseignez l'emplacement à suivre.",
-        "data": {
-          "radius": "Rayon en mètres",
-          "latitude": "Latitude",
-          "longitude": "Longitude",
-          "scan_interval": "Intervalle de mise à jour en secondes"
-        }
-      }
-    }
-  },
-  "options": {
-    "step": {
-      "init": {
-        "description": "Modifiez les paramètres de l'emplacement à suivre.",
+        "description": "Renseignez l'emplacement à suivre et vos identifiants API OpenSky Network.",
         "data": {
           "radius": "Rayon en mètres",
           "latitude": "Latitude",
           "longitude": "Longitude",
           "scan_interval": "Intervalle de mise à jour en secondes",
-          "min_altitude": "Altitude minimale en pieds",
-          "max_altitude": "Altitude maximale en pieds",
-          "most_tracked": "Activer la liste des vols les plus suivis",
-          "enable_tracker": "Activer le device_tracker for les vols supplémentaires",
-          "auto_cleanup": "Activer le nettoyage automatique des vols suivis ayant atterri",
-          "tracker_name_style": "Style de nommage du traceur de carte",
-          "username": "Nom d'utilisateur (Facultatif)",
-          "password": "Mot de passe (Facultatif)"
+          "opensky_client_id": "ID client OpenSky",
+          "opensky_client_secret": "Secret client OpenSky"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Se ré-authentifier auprès d'OpenSky",
+        "description": "OpenSky a rejeté les identifiants API enregistrés. Saisissez un ID client et un secret valides pour reprendre les mises à jour des vols.",
+        "data": {
+          "opensky_client_id": "ID client OpenSky",
+          "opensky_client_secret": "Secret client OpenSky"
         }
       }
+    },
+    "error": {
+      "missing_credentials": "Vous devez saisir à la fois l'ID client et le secret client OpenSky.",
+      "invalid_auth": "OpenSky a rejeté ces identifiants.",
+      "cannot_connect": "Impossible de joindre OpenSky pour valider les identifiants."
+    },
+    "abort": {
+      "reauth_successful": "La ré-authentification a réussi."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "description": "Modifier les paramètres de l'emplacement suivi.",
+        "data": {
+          "radius": "Rayon en mètres",
+          "latitude": "Latitude",
+          "longitude": "Longitude",
+          "scan_interval": "Intervalle de mise à jour en secondes",
+          "min_altitude": "Altitude minimale",
+          "max_altitude": "Altitude maximale",
+          "opensky_client_id": "ID client OpenSky",
+          "opensky_client_secret": "Secret client OpenSky"
+        }
+      }
+    },
+    "error": {
+      "missing_credentials": "Vous devez saisir à la fois l'ID client et le secret client OpenSky.",
+      "invalid_auth": "OpenSky a rejeté ces identifiants.",
+      "cannot_connect": "Impossible de joindre OpenSky pour valider les identifiants."
     }
   },
   "entity": {
     "sensor": {
-      "in_area": { "name": "Vols dans la zone" },
-      "entered": { "name": "Zone entrée" },
-      "exited": { "name": "Zone quittée" },
-      "most_tracked": { "name": "Les plus suivis" },
-      "additional_tracked": { "name": "Suivis supplémentaires" },
-      "airport_arrivals": { "name": "Arrivées aéroport" },
-      "airport_departures": { "name": "Départs aéroport" },
-      "helicopters_in_area": { "name": "Hélicoptères dans la zone" },
-      "airport_arrivals_on_time": { "name": "Arrivées à l'heure" },
-      "airport_arrivals_delayed": { "name": "Arrivées retardées" },
-      "airport_arrivals_delay_average": { "name": "Retard moyen arrivées" },
-      "airport_arrivals_delay_index": { "name": "Indice de retard arrivées" },
-      "airport_arrivals_canceled": { "name": "Arrivées annulées" },
-      "airport_departures_on_time": { "name": "Départs à l'heure" },
-      "airport_departures_delayed": { "name": "Départs retardés" },
-      "airport_departures_delay_average": { "name": "Retard moyen départs" },
-      "airport_departures_delay_index": { "name": "Indice de retard départs" },
-      "airport_departures_canceled": { "name": "Départs annulés" }
-    },
-    "button": {
-      "clear_tracked": { "name": "Effacer la liste de suivi" },
-      "tracked_clear": { "name": "Effacer les suivis supplémentaires" }
+      "in_area": {
+        "name": "Actuellement dans la zone"
+      },
+      "entered": {
+        "name": "Entrés dans la zone"
+      },
+      "exited": {
+        "name": "Sortis de la zone"
+      }
     },
     "switch": {
-      "scanning": { "name": "Récupération des données API" }
-    },
-    "text": {
-      "add_track": { "name": "Ajouter au suivi" },
-      "remove_track": { "name": "Supprimer du suivi" },
-      "airport_track": { "name": "Suivi d'aéroport" }
+      "scanning": {
+        "name": "Récupération des données API"
+      }
+    }
+  },
+  "issues": {
+    "area_stale": {
+      "title": "Les données de zone de Nearby Flights sont peut-être temporairement bloquées",
+      "description": "L'intégration Nearby Flights pour **{name}** affiche des données de zone en cache depuis plus de {minutes} minutes. Cela signifie généralement que les serveurs d'OpenSky limitent temporairement le flux de zone, ou que la requête échoue. Les capteurs qui dépendent des avions actuellement dans la zone peuvent être obsolètes jusqu'au rétablissement. Aucune action n'est nécessaire - le problème devrait se résoudre de lui-même dès que le flux sera rétabli, et cette alerte disparaîtra automatiquement à la réception de nouvelles données."
     }
   }
 }

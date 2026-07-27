@@ -2,69 +2,78 @@
   "config": {
     "step": {
       "user": {
-        "description": "추적할 위치를 입력하세요.",
-        "data": {
-          "radius": "반경(미터)",
-          "latitude": "위도",
-          "longitude": "경도",
-          "scan_interval": "업데이트 간격(초)"
-        }
-      }
-    }
-  },
-  "options": {
-    "step": {
-      "init": {
-        "description": "추적할 위치의 매개변수를 편집합니다.",
+        "description": "추적할 위치와 OpenSky Network API 자격 증명을 입력하세요.",
         "data": {
           "radius": "반경(미터)",
           "latitude": "위도",
           "longitude": "경도",
           "scan_interval": "업데이트 간격(초)",
-          "min_altitude": "최소 고도(피트)",
-          "max_altitude": "최대 고도(피트)",
-          "most_tracked": "가장 많이 추적된 항공편 목록 활성화",
-          "enable_tracker": "추가 추적 항공편에 대해 device_tracker 활성화",
-          "auto_cleanup": "착륙한 추적 항공편의 자동 정리 활성화",
-          "tracker_name_style": "지도 추적기 명칭 스타일",
-          "username": "사용자 이름 (선택 사항)",
-          "password": "비밀번호 (선택 사항)"
+          "opensky_client_id": "OpenSky 클라이언트 ID",
+          "opensky_client_secret": "OpenSky 클라이언트 시크릿"
+        }
+      },
+      "reauth_confirm": {
+        "title": "OpenSky 재인증",
+        "description": "OpenSky가 저장된 API 자격 증명을 거부했습니다. 항공편 업데이트를 재개하려면 유효한 클라이언트 ID와 시크릿을 입력하세요.",
+        "data": {
+          "opensky_client_id": "OpenSky 클라이언트 ID",
+          "opensky_client_secret": "OpenSky 클라이언트 시크릿"
         }
       }
+    },
+    "error": {
+      "missing_credentials": "OpenSky 클라이언트 ID와 클라이언트 시크릿을 모두 입력해야 합니다.",
+      "invalid_auth": "OpenSky가 이 자격 증명을 거부했습니다.",
+      "cannot_connect": "자격 증명을 확인하기 위해 OpenSky에 연결할 수 없습니다."
+    },
+    "abort": {
+      "reauth_successful": "재인증에 성공했습니다."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "description": "추적 중인 위치의 매개변수를 편집합니다.",
+        "data": {
+          "radius": "반경(미터)",
+          "latitude": "위도",
+          "longitude": "경도",
+          "scan_interval": "업데이트 간격(초)",
+          "min_altitude": "최소 고도",
+          "max_altitude": "최대 고도",
+          "opensky_client_id": "OpenSky 클라이언트 ID",
+          "opensky_client_secret": "OpenSky 클라이언트 시크릿"
+        }
+      }
+    },
+    "error": {
+      "missing_credentials": "OpenSky 클라이언트 ID와 클라이언트 시크릿을 모두 입력해야 합니다.",
+      "invalid_auth": "OpenSky가 이 자격 증명을 거부했습니다.",
+      "cannot_connect": "자격 증명을 확인하기 위해 OpenSky에 연결할 수 없습니다."
     }
   },
   "entity": {
     "sensor": {
-      "in_area": { "name": "구역 내 항공편" },
-      "entered": { "name": "구역 진입" },
-      "exited": { "name": "구역 이탈" },
-      "most_tracked": { "name": "가장 많이 추적됨" },
-      "additional_tracked": { "name": "추가 추적됨" },
-      "airport_arrivals": { "name": "공항 도착" },
-      "airport_departures": { "name": "공항 출발" },
-      "helicopters_in_area": { "name": "구역 내 헬리콥터" },
-      "airport_arrivals_on_time": { "name": "정시 도착" },
-      "airport_arrivals_delayed": { "name": "지연 도착" },
-      "airport_arrivals_delay_average": { "name": "도착 평균 지연" },
-      "airport_arrivals_delay_index": { "name": "도착 지연 지수" },
-      "airport_arrivals_canceled": { "name": "도착 취소" },
-      "airport_departures_on_time": { "name": "정시 출발" },
-      "airport_departures_delayed": { "name": "지연 출발" },
-      "airport_departures_delay_average": { "name": "출발 평균 지연" },
-      "airport_departures_delay_index": { "name": "출발 지연 지수" },
-      "airport_departures_canceled": { "name": "출발 취소" }
-    },
-    "button": {
-      "clear_tracked": { "name": "추적 목록 지우기" },
-      "tracked_clear": { "name": "추가 추적 목록 지우기" }
+      "in_area": {
+        "name": "현재 구역 내"
+      },
+      "entered": {
+        "name": "구역 진입"
+      },
+      "exited": {
+        "name": "구역 이탈"
+      }
     },
     "switch": {
-      "scanning": { "name": "API 데이터 가져오기" }
-    },
-    "text": {
-      "add_track": { "name": "추적에 추가" },
-      "remove_track": { "name": "추적에서 제거" },
-      "airport_track": { "name": "공항 추적" }
+      "scanning": {
+        "name": "API 데이터 가져오기"
+      }
+    }
+  },
+  "issues": {
+    "area_stale": {
+      "title": "Nearby Flights 구역 데이터가 일시적으로 차단되었을 수 있음",
+      "description": "**{name}**의 Nearby Flights 통합이 {minutes}분 이상 캐시된 구역 데이터를 표시하고 있습니다. 일반적으로 OpenSky 서버가 일시적으로 요청을 제한하고 있거나 요청이 실패하고 있음을 의미합니다. 구역 내 항공기에 의존하는 센서는 해결될 때까지 오래된 값일 수 있습니다. 조치가 필요하지 않습니다 - 피드가 복구되면 자동으로 해결되며, 새 데이터가 수신되면 이 알림도 자동으로 사라집니다."
     }
   }
 }
