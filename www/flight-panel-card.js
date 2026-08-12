@@ -190,6 +190,13 @@ const UNIT_CONVERTERS = {
 };
 
 class FlightPanelCard extends HTMLElement {
+  static getStubConfig(hass) {
+    const entity = Object.keys(hass.states)
+      .filter((id) => Array.isArray(hass.states[id].attributes?.flights))
+      .sort()[0];
+    return { entity: entity || "sensor.nearby_flights_current_in_area" };
+  }
+
   setConfig(config) {
     if (!config.entity) {
       throw new Error("flight-panel-card: 'entity' is required (the flights sensor)");
@@ -1489,4 +1496,24 @@ class FlightPanelCard extends HTMLElement {
   }
 }
 
-customElements.define("flight-panel-card", FlightPanelCard);
+if (customElements.get("flight-panel-card")) {
+  console.warn("[flight-panel-card] 'flight-panel-card' is already registered; skipping definition");
+} else {
+  customElements.define("flight-panel-card", FlightPanelCard);
+}
+
+window.customCards = window.customCards || [];
+window.customCards.push({
+  type: "flight-panel-card",
+  name: "Flight Panel Card",
+  // No preview flag: a live preview would start this card's update_entity polling
+  // loop inside the Add-card dialog itself.
+  description: "Combined flight panel (map, list, status bar) for a nearby_flights sensor.",
+  getEntitySuggestion: (hass, entityId) => {
+    const stateObj = hass.states[entityId];
+    if (!stateObj || !Array.isArray(stateObj.attributes?.flights)) {
+      return null;
+    }
+    return { config: { type: "custom:flight-panel-card", entity: entityId } };
+  },
+});
