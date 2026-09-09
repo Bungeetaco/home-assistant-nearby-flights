@@ -90,6 +90,10 @@
 //                          omit to auto-pick "color"/"dark" from hass.themes.darkMode
 //   background_map_opacity opacity override, used only when background_map is forced
 //   background_map_opacity_light / _dark  opacity used per-mode in the auto (unforced) case
+//   background_map_api_key CARTO basemap key (carto.com/basemaps/apikey). Since 2026-08 CARTO
+//                          bakes an "API KEY REQUIRED" watermark into every keyless raster
+//                          tile, which hits the "dark"/"light"/"voyager" styles (the auto
+//                          dark-mode pick is "dark"). Passed straight to the mounted map card.
 //   radar_grid_color       ring/cardinal-line color (default "transparent" i.e. hidden)
 //   ring_distance          km between radar rings, cosmetic while rings are hidden (default 20)
 //   aircraft_marker_size   "small"|"normal"|"large"|"x-large"|"xx-large" (default "x-large")
@@ -995,6 +999,7 @@ class FlightPanelCard extends HTMLElement {
         ring_distance: this._config.ring_distance ?? 20,
         background_map: style,
         background_map_opacity: opacity,
+        background_map_api_key: this._config.background_map_api_key || "",
         radar_size: this._config.map_radar_size ?? 100,
         "radar-grid-color": this._config.radar_grid_color || "transparent",
         "aircraft-marker-size": this._config.aircraft_marker_size || "x-large",
