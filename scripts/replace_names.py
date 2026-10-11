@@ -165,6 +165,7 @@ def cmd_apply(args) -> int:
 
     # 2. Renames, deepest paths first so parent renames don't break children.
     renames = []
+    collisions = []
     planned_targets = set()
     for dirpath, dirnames, filenames in reversed(tree):
         for name in filenames + dirnames:
@@ -175,9 +176,16 @@ def cmd_apply(args) -> int:
             dst = os.path.join(dirpath, new_name)
             same_file = os.path.normcase(src) == os.path.normcase(dst)
             if (os.path.lexists(dst) and not same_file) or dst in planned_targets:
-                sys.exit(f"Refusing to rename, target already exists: {os.path.relpath(dst, root)}")
+                collisions.append((os.path.relpath(src, root), os.path.relpath(dst, root)))
+                continue
             planned_targets.add(dst)
             renames.append({"from": os.path.relpath(src, root), "to": os.path.relpath(dst, root)})
+    if collisions:
+        print(f"Nothing changed: {len(collisions)} rename(s) would overwrite something "
+              "that already exists:", file=sys.stderr)
+        for src, dst in collisions:
+            print(f"  {src}  ->  {dst}  (already exists)", file=sys.stderr)
+        sys.exit(1)
 
     total_edits = sum(len(c["edits"]) for c in content_changes)
     print(f"{len(content_changes)} file(s) with {total_edits} replacement(s), "
