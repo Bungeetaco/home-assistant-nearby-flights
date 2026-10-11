@@ -5,15 +5,19 @@ with an exact undo.
 Matching is case-insensitive and the replacement follows the case of each
 match (``foo -> bar`` turns ``FOO`` into ``BAR`` and ``Foo`` into ``Bar``).
 Every change is recorded in a manifest, so ``revert`` puts back the exact
-original text, case included.
+original text, case included. Each ``apply`` is kept as a separate step;
+``revert`` undoes the latest one (or ``--steps N`` / ``--all``).
 
 Usage:
     replace_names.py apply  ROOT OLD NEW [-r OLD2 NEW2 ...] [--dry-run]
-    replace_names.py revert ROOT [--force]
+    replace_names.py revert ROOT [--steps N | --all] [--force]
+    replace_names.py list   ROOT
 
 Examples:
     replace_names.py apply . nearby_flights plane_tracker -r "nearby flights" "plane tracker"
-    replace_names.py revert .
+    replace_names.py apply . opensky skynet
+    replace_names.py list .
+    replace_names.py revert . --all
 """
 
 from __future__ import annotations
@@ -77,6 +81,26 @@ def is_binary(data: bytes) -> bool:
     return b"\x00" in data[:BINARY_SNIFF_BYTES]
 
 
+def load_steps(manifest_path: str) -> list[dict]:
+    """Return the recorded apply steps, oldest first."""
+    if not os.path.exists(manifest_path):
+        return []
+    with open(manifest_path, encoding="utf-8") as fh:
+        manifest = json.load(fh)
+    if "steps" in manifest:
+        return manifest["steps"]
+    return [manifest]  # version 1 file: a single step
+
+
+def save_steps(manifest_path: str, steps: list[dict]) -> None:
+    if not steps:
+        if os.path.exists(manifest_path):
+            os.remove(manifest_path)
+        return
+    with open(manifest_path, "w", encoding="utf-8") as fh:
+        json.dump({"version": 2, "steps": steps}, fh, indent=1, ensure_ascii=False)
+
+
 def walk(root: str, excludes: set[str], manifest_path: str):
     """Yield (dirpath, dirnames, filenames) bottom-up, skipping excludes."""
     manifest_abs = os.path.abspath(manifest_path)
@@ -94,9 +118,7 @@ def walk(root: str, excludes: set[str], manifest_path: str):
 def cmd_apply(args) -> int:
     root = os.path.abspath(args.root)
     manifest_path = args.manifest or os.path.join(root, MANIFEST_NAME)
-    if os.path.exists(manifest_path) and not args.dry_run:
-        sys.exit(f"Manifest already exists: {manifest_path}\n"
-                 "Run 'revert' first, or pass --manifest to use a different file.")
+    steps = load_steps(manifest_path)
 
     pairs = [(args.old, args.new)] + [tuple(p) for p in (args.replace or [])]
     for old, _ in pairs:
@@ -171,15 +193,13 @@ def cmd_apply(args) -> int:
     if not content_changes and not renames:
         return 0
 
-    # Write the manifest first so an interrupted run can still be reverted.
-    manifest = {
-        "version": 1,
+    # Save the step first so an interrupted run can still be reverted.
+    steps.append({
         "pairs": pairs,
         "renames": renames,
         "contents": [{k: v for k, v in c.items() if k != "_data"} for c in content_changes],
-    }
-    with open(manifest_path, "w", encoding="utf-8") as fh:
-        json.dump(manifest, fh, indent=1, ensure_ascii=False)
+    })
+    save_steps(manifest_path, steps)
 
     for c in content_changes:
         with open(os.path.join(root, c["path"]), "wb") as fh:
@@ -187,8 +207,8 @@ def cmd_apply(args) -> int:
     for r in renames:
         os.rename(os.path.join(root, r["from"]), os.path.join(root, r["to"]))
 
-    print(f"Done. Undo with: {os.path.basename(sys.argv[0])} revert {args.root}"
-          + (f" --manifest {manifest_path}" if args.manifest else ""))
+    print(f"Done (step {len(steps)}). Undo with: {os.path.basename(sys.argv[0])} "
+          f"revert {args.root}" + (f" --manifest {manifest_path}" if args.manifest else ""))
     return 0
 
 
@@ -215,39 +235,31 @@ def restore_text(text: str, edits: list, exact: bool) -> tuple[str, int]:
     return "".join(out), restored
 
 
-def cmd_revert(args) -> int:
-    root = os.path.abspath(args.root)
-    manifest_path = args.manifest or os.path.join(root, MANIFEST_NAME)
-    if not os.path.exists(manifest_path):
-        sys.exit(f"No manifest found at {manifest_path}")
-    with open(manifest_path, encoding="utf-8") as fh:
-        manifest = json.load(fh)
-
-    problems = 0
+def revert_step(root: str, step: dict, force: bool) -> dict | None:
+    """Undo one apply step. Returns the part that could not be undone, if any."""
+    failed_renames, failed_contents = [], []
 
     # 1. Undo renames in reverse order (parents first, then children).
-    for r in reversed(manifest["renames"]):
+    for r in reversed(step["renames"]):
         src = os.path.join(root, r["to"])
         dst = os.path.join(root, r["from"])
         if not os.path.lexists(src):
-            if os.path.lexists(dst):
-                continue  # already reverted
             print(f"  missing: {r['to']}", file=sys.stderr)
-            problems += 1
+            failed_renames.insert(0, r)
             continue
         same_file = os.path.normcase(src) == os.path.normcase(dst)
         if os.path.lexists(dst) and not same_file:
             print(f"  cannot rename back, {r['from']} exists", file=sys.stderr)
-            problems += 1
+            failed_renames.insert(0, r)
             continue
         os.rename(src, dst)
 
     # 2. Restore file contents at their original paths.
-    for c in manifest["contents"]:
+    for c in step["contents"]:
         path = os.path.join(root, c["path"])
         if not os.path.isfile(path):
             print(f"  missing: {c['path']}", file=sys.stderr)
-            problems += 1
+            failed_contents.append(c)
             continue
         with open(path, "rb") as fh:
             raw = fh.read()
@@ -257,9 +269,9 @@ def cmd_revert(args) -> int:
         if restored != len(c["edits"]):
             msg = (f"  {c['path']}: changed since apply, only "
                    f"{restored}/{len(c['edits'])} replacement(s) found")
-            if not args.force:
+            if not force:
                 print(msg + " (skipped, use --force to restore those)", file=sys.stderr)
-                problems += 1
+                failed_contents.append(c)
                 continue
             print(msg + " (restored those)", file=sys.stderr)
         elif not exact:
@@ -267,12 +279,49 @@ def cmd_revert(args) -> int:
         with open(path, "wb") as fh:
             fh.write(new_text.encode("utf-8", errors="surrogateescape"))
 
-    if problems:
-        print(f"Reverted with {problems} problem(s); manifest kept at {manifest_path}",
-              file=sys.stderr)
-        return 1
-    os.remove(manifest_path)
-    print("Reverted.")
+    if failed_renames or failed_contents:
+        return {**step, "renames": failed_renames, "contents": failed_contents}
+    return None
+
+
+def describe(step: dict) -> str:
+    pairs = ", ".join(f"{old} -> {new}" for old, new in step["pairs"])
+    edits = sum(len(c["edits"]) for c in step["contents"])
+    return f"{pairs}  ({edits} replacement(s), {len(step['renames'])} rename(s))"
+
+
+def cmd_revert(args) -> int:
+    root = os.path.abspath(args.root)
+    manifest_path = args.manifest or os.path.join(root, MANIFEST_NAME)
+    steps = load_steps(manifest_path)
+    if not steps:
+        sys.exit(f"Nothing to revert, no manifest at {manifest_path}")
+
+    count = len(steps) if args.all else min(args.steps, len(steps))
+    for _ in range(count):
+        print(f"Reverting step {len(steps)}: {describe(steps[-1])}")
+        leftover = revert_step(root, steps[-1], args.force)
+        if leftover:
+            steps[-1] = leftover
+            save_steps(manifest_path, steps)
+            print(f"Step {len(steps)} only partly reverted; the rest is kept in "
+                  f"{manifest_path}. Fix the problems above and run revert again.",
+                  file=sys.stderr)
+            return 1
+        steps.pop()
+        save_steps(manifest_path, steps)
+
+    print(f"Reverted {count} step(s), {len(steps)} left.")
+    return 0
+
+
+def cmd_list(args) -> int:
+    root = os.path.abspath(args.root)
+    steps = load_steps(args.manifest or os.path.join(root, MANIFEST_NAME))
+    if not steps:
+        print("No changes recorded.")
+    for i, step in enumerate(steps, 1):
+        print(f"{i}. {describe(step)}")
     return 0
 
 
@@ -299,12 +348,21 @@ def main() -> int:
     p.add_argument("--manifest", help=f"undo file (default: ROOT/{MANIFEST_NAME})")
     p.set_defaults(func=cmd_apply)
 
-    p = sub.add_parser("revert", help="undo a previous apply")
+    p = sub.add_parser("revert", help="undo the latest apply (or several)")
     p.add_argument("root", help="same folder given to apply")
     p.add_argument("--manifest", help=f"undo file (default: ROOT/{MANIFEST_NAME})")
+    group = p.add_mutually_exclusive_group()
+    group.add_argument("--steps", type=int, default=1, metavar="N",
+                       help="undo the last N apply steps (default: 1)")
+    group.add_argument("--all", action="store_true", help="undo every recorded step")
     p.add_argument("--force", action="store_true",
                    help="restore what can be found even in files edited since apply")
     p.set_defaults(func=cmd_revert)
+
+    p = sub.add_parser("list", help="show the recorded apply steps")
+    p.add_argument("root", help="same folder given to apply")
+    p.add_argument("--manifest", help=f"undo file (default: ROOT/{MANIFEST_NAME})")
+    p.set_defaults(func=cmd_list)
 
     args = parser.parse_args()
     return args.func(args)
