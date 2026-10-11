@@ -9,7 +9,7 @@ original text, case included. Each ``apply`` is kept as a separate step;
 ``revert`` undoes the latest one (or ``--steps N`` / ``--all``).
 
 Usage:
-    replace_names.py apply  ROOT OLD NEW [-r OLD2 NEW2 ...] [--dry-run]
+    replace_names.py apply  ROOT OLD NEW [-r OLD2 NEW2 ...] [--merge] [--dry-run]
     replace_names.py revert ROOT [--steps N | --all] [--force]
     replace_names.py list   ROOT
 
@@ -115,6 +115,58 @@ def walk(root: str, excludes: set[str], manifest_path: str):
 
 # ---------------------------------------------------------------- apply
 
+def plan_renames(root: str, tree: list, pattern: re.Pattern, repl, merge: bool):
+    """Plan the renames on a virtual copy of the tree.
+
+    Returns (ops, collisions). ops are {"from", "to"} moves and, when merging
+    into an existing folder, {"op": "rmdir", "path"} for the emptied source.
+    """
+    def rel(*parts):
+        return os.path.normpath(os.path.relpath(os.path.join(*parts), root))
+
+    # "d" folder we walked, "f" file, "x" anything we must not look inside
+    # (symlinks, excluded names, the manifest).
+    vfs = {}
+    for dirpath, dirnames, filenames in tree:
+        for name in dirnames:
+            vfs[rel(dirpath, name)] = "x" if os.path.islink(os.path.join(dirpath, name)) else "d"
+        for name in filenames:
+            vfs[rel(dirpath, name)] = "f"
+        for name in set(os.listdir(dirpath)) - set(dirnames) - set(filenames):
+            vfs[rel(dirpath, name)] = "x"
+
+    ops, collisions = [], []
+
+    def move(src: str, dst: str) -> bool:
+        same_file = os.path.normcase(src) == os.path.normcase(dst)
+        if dst not in vfs and (same_file or not os.path.lexists(os.path.join(root, dst))):
+            prefix = src + os.sep
+            for key in [k for k in vfs if k == src or k.startswith(prefix)]:
+                vfs[dst + key[len(src):]] = vfs.pop(key)
+            ops.append({"from": src, "to": dst})
+            return True
+        both_dirs = vfs.get(src) == "d" and vfs.get(dst) == "d"
+        if merge and both_dirs:
+            prefix = src + os.sep
+            children = [k for k in vfs if k.startswith(prefix) and os.sep not in k[len(prefix):]]
+            results = [move(c, os.path.join(dst, c[len(prefix):])) for c in children]
+            if not all(results):
+                return False
+            del vfs[src]
+            ops.append({"op": "rmdir", "path": src})
+            return True
+        collisions.append((src, dst, both_dirs))
+        return False
+
+    for dirpath, dirnames, filenames in reversed(tree):
+        for name in filenames + dirnames:
+            new_name = pattern.sub(repl, name)
+            src = rel(dirpath, name)
+            if new_name != name and src in vfs:
+                move(src, rel(dirpath, new_name))
+    return ops, collisions
+
+
 def cmd_apply(args) -> int:
     root = os.path.abspath(args.root)
     manifest_path = args.manifest or os.path.join(root, MANIFEST_NAME)
@@ -164,37 +216,31 @@ def cmd_apply(args) -> int:
             })
 
     # 2. Renames, deepest paths first so parent renames don't break children.
-    renames = []
-    collisions = []
-    planned_targets = set()
-    for dirpath, dirnames, filenames in reversed(tree):
-        for name in filenames + dirnames:
-            new_name = pattern.sub(repl, name)
-            if new_name == name:
-                continue
-            src = os.path.join(dirpath, name)
-            dst = os.path.join(dirpath, new_name)
-            same_file = os.path.normcase(src) == os.path.normcase(dst)
-            if (os.path.lexists(dst) and not same_file) or dst in planned_targets:
-                collisions.append((os.path.relpath(src, root), os.path.relpath(dst, root)))
-                continue
-            planned_targets.add(dst)
-            renames.append({"from": os.path.relpath(src, root), "to": os.path.relpath(dst, root)})
+    renames, collisions = plan_renames(root, tree, pattern, repl, args.merge)
     if collisions:
         print(f"Nothing changed: {len(collisions)} rename(s) would overwrite something "
               "that already exists:", file=sys.stderr)
-        for src, dst in collisions:
-            print(f"  {src}  ->  {dst}  (already exists)", file=sys.stderr)
+        for src, dst, both_dirs in collisions:
+            print(f"  {src}  ->  {dst}  (already exists"
+                  + (", both are folders)" if both_dirs else ")"), file=sys.stderr)
+        if not args.merge and any(both for _, _, both in collisions):
+            print("Folders that already exist can be merged with --merge "
+                  "(revert splits them again).", file=sys.stderr)
         sys.exit(1)
 
     total_edits = sum(len(c["edits"]) for c in content_changes)
+    merged = sum(1 for r in renames if r.get("op") == "rmdir")
     print(f"{len(content_changes)} file(s) with {total_edits} replacement(s), "
-          f"{len(renames)} rename(s).")
+          f"{len(renames) - merged} rename(s)"
+          + (f", {merged} folder(s) merged." if merged else "."))
     if args.dry_run or args.verbose:
         for c in content_changes:
             print(f"  edit   {c['path']} ({len(c['edits'])})")
         for r in renames:
-            print(f"  rename {r['from']} -> {r['to']}")
+            if r.get("op") == "rmdir":
+                print(f"  merged {r['path']} (now empty, removed)")
+            else:
+                print(f"  rename {r['from']} -> {r['to']}")
     if args.dry_run:
         print("Dry run, nothing changed.")
         return 0
@@ -213,7 +259,10 @@ def cmd_apply(args) -> int:
         with open(os.path.join(root, c["path"]), "wb") as fh:
             fh.write(c["_data"])
     for r in renames:
-        os.rename(os.path.join(root, r["from"]), os.path.join(root, r["to"]))
+        if r.get("op") == "rmdir":
+            os.rmdir(os.path.join(root, r["path"]))
+        else:
+            os.rename(os.path.join(root, r["from"]), os.path.join(root, r["to"]))
 
     print(f"Done (step {len(steps)}). Undo with: {os.path.basename(sys.argv[0])} "
           f"revert {args.root}" + (f" --manifest {manifest_path}" if args.manifest else ""))
@@ -249,6 +298,14 @@ def revert_step(root: str, step: dict, force: bool) -> dict | None:
 
     # 1. Undo renames in reverse order (parents first, then children).
     for r in reversed(step["renames"]):
+        if r.get("op") == "rmdir":
+            # A folder that was merged away: recreate it so its files can move back.
+            try:
+                os.makedirs(os.path.join(root, r["path"]), exist_ok=True)
+            except OSError as err:
+                print(f"  cannot recreate {r['path']}: {err}", file=sys.stderr)
+                failed_renames.insert(0, r)
+            continue
         src = os.path.join(root, r["to"])
         dst = os.path.join(root, r["from"])
         if not os.path.lexists(src):
@@ -295,7 +352,9 @@ def revert_step(root: str, step: dict, force: bool) -> dict | None:
 def describe(step: dict) -> str:
     pairs = ", ".join(f"{old} -> {new}" for old, new in step["pairs"])
     edits = sum(len(c["edits"]) for c in step["contents"])
-    return f"{pairs}  ({edits} replacement(s), {len(step['renames'])} rename(s))"
+    merged = sum(1 for r in step["renames"] if r.get("op") == "rmdir")
+    return (f"{pairs}  ({edits} replacement(s), {len(step['renames']) - merged} rename(s)"
+            + (f", {merged} folder(s) merged)" if merged else ")"))
 
 
 def cmd_revert(args) -> int:
@@ -351,6 +410,9 @@ def main() -> int:
     p.add_argument("-x", "--exclude", action="append", metavar="NAME",
                    help="file or folder name to skip (repeatable); "
                         f"always skipped: {', '.join(sorted(DEFAULT_EXCLUDES))}")
+    p.add_argument("--merge", action="store_true",
+                   help="when a renamed folder already exists, move the contents into it "
+                        "(files with the same name still stop the run)")
     p.add_argument("-n", "--dry-run", action="store_true", help="show changes only")
     p.add_argument("-v", "--verbose", action="store_true", help="list every change")
     p.add_argument("--manifest", help=f"undo file (default: ROOT/{MANIFEST_NAME})")
