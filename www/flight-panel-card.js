@@ -15,7 +15,15 @@
 //                          `homeassistant.update_entity` on this cadence, and only while
 //                          it's actually mounted in the DOM AND the browser tab is visible
 //                          (see connectedCallback/_startPolling) — pausing the instant the
-//                          dashboard isn't being looked at. The backend integration's own
+//                          dashboard isn't being looked at. The call is also skipped
+//                          entirely while the entity isn't live in hass.states (see
+//                          _liveStateObj) — e.g. right after an HA restart, when an
+//                          always-on kiosk browser reconnects before the integration has
+//                          created the entity — since HA can only answer that with a
+//                          "Forced update failed. Entity ... not found." warning in its
+//                          log; such a skipped poll counts as a stale one for backoff
+//                          purposes, exactly as an unavailable entity does. The backend
+//                          integration's own
 //                          scan_interval should be set to something very large (e.g. a day)
 //                          as a dormant safety-net floor, since this card is what actually
 //                          drives fetches now. This also means the OpenSky API only ever
@@ -757,6 +765,24 @@ class FlightPanelCard extends HTMLElement {
     }
   }
 
+  // The flights sensor's state object, or undefined when there is nothing live for
+  // `homeassistant.update_entity` to act on. Both update_entity call sites gate on
+  // this, because HA resolves that service against the integration's loaded platform
+  // entities, not the state machine: calling it for an entity that isn't there just
+  // logs "Forced update failed. Entity <id> not found." server-side (the call itself
+  // still resolves, so the catch blocks below never see it). Two shapes of "not
+  // live": the entity is absent from hass.states altogether (HA restart — the kiosk
+  // browser reconnects as soon as the websocket is up, before the integration's
+  // platforms have been set up), or it's only the entity registry's `unavailable`
+  // placeholder with `restored: true` (written at HA start for registered entities
+  // whose integration hasn't loaded, e.g. a ConfigEntryNotReady retry) rather than a
+  // state the integration has actually written.
+  _liveStateObj() {
+    const stateObj = this._hass?.states?.[this._config.entity];
+    if (!stateObj || stateObj.attributes?.restored === true) return undefined;
+    return stateObj;
+  }
+
   // Forces an immediate backend poll via HA's core `homeassistant.update_entity`
   // service, which for a CoordinatorEntity-backed sensor (confirmed this sensor is one
   // by reading custom_components/nearby_flights/sensor.py) triggers a real
@@ -764,12 +790,24 @@ class FlightPanelCard extends HTMLElement {
   // whatever's already cached. The button disables itself for a short cooldown
   // afterward so it can't be turned into its own rapid-fire rate-limit trigger by
   // repeated clicking, the same failure mode that caused the 429 a few rounds back.
+  // Skipped (cooldown still applies) while the entity isn't live — see _liveStateObj;
+  // the ticker is already showing the "Entity ... not found" message in that case.
   async _handleUpdateNowClick(buttonEl) {
     if (!this._hass) return;
     const cooldownMs = this._config.update_now_cooldown_ms ?? 5000;
     buttonEl.disabled = true;
     const originalLabel = buttonEl.textContent;
     buttonEl.textContent = "Updating…";
+    if (!this._liveStateObj()) {
+      console.warn(
+        `[flight-panel-card] manual update skipped: ${this._config.entity} is not live in hass.states`
+      );
+      setTimeout(() => {
+        buttonEl.disabled = false;
+        buttonEl.textContent = originalLabel;
+      }, cooldownMs);
+      return;
+    }
     try {
       await this._hass.callService("homeassistant", "update_entity", {
         entity_id: this._config.entity,
@@ -888,6 +926,19 @@ class FlightPanelCard extends HTMLElement {
 
   async _pollBackendNow() {
     if (!this._hass || this._pollInFlight) return;
+    if (!this._liveStateObj()) {
+      // Nothing for update_entity to act on yet (see _liveStateObj) — don't issue the
+      // call, HA would only log a "not found" warning. Account for it exactly the way
+      // the post-poll freshness check below treats an unavailable entity: one more
+      // stale poll toward the compounding backoff, rescheduling if that flipped the
+      // backoff state. The next poll (or the Update Now button) goes back to a real
+      // call the moment the entity appears; _errorStreak is untouched because no
+      // service call was made, so nothing "failed".
+      const wasBackedOff = this._staleStreak > 0;
+      this._staleStreak += 1;
+      if (wasBackedOff !== this._staleStreak > 0) this._startPolling();
+      return;
+    }
     this._pollInFlight = true;
     try {
       await this._hass.callService("homeassistant", "update_entity", {
@@ -901,7 +952,8 @@ class FlightPanelCard extends HTMLElement {
       // Backoff accounting, once per real poll (see the note in _applyHass): give the
       // post-poll state push a moment to land, then judge freshness from the entity
       // itself. Stale data or an unavailable entity both count toward the compounding
-      // backoff; a healthy poll resets it.
+      // backoff; a healthy poll resets it. (A poll skipped above because the entity
+      // wasn't live does the same accounting inline, without the 500 ms wait.)
       setTimeout(() => {
         const st = this._hass?.states?.[this._config.entity];
         const notFresh = !st || st.state === "unavailable" || st.state === "unknown" || !!st.attributes.stale;
